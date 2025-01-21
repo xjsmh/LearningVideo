@@ -86,7 +86,7 @@ public class Core {
         mWorkHandler = new WorkHandler(mWorkThread.getLooper());
         mDecoder = new Decoder(afd, mWorkHandler);
         mEncoder = new Encoder(mWorkHandler);
-        mRenderer = new Renderer4();
+        mRenderer = new Renderer2();
         mContext = context;
     }
     public void start() {

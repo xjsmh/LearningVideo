@@ -8,8 +8,8 @@ import android.opengl.GLES20;
 
 public class DoNothingButUploadImage extends FilterBase {
 
-    public DoNothingButUploadImage(EGLDisplay display, EGLConfig config, int inTexType, int width, int height) {
-        super(display, config, inTexType, width, height);
+    public DoNothingButUploadImage(FilterBase lastFilter, EGLContext context, EGLDisplay display, EGLConfig config, int inTexType, int width, int height) {
+        super(lastFilter, context, display, config, inTexType, width, height);
         mOutTextureType = inTexType;
     }
 
@@ -20,7 +20,8 @@ public class DoNothingButUploadImage extends FilterBase {
         }
         mInputTexture.add(tex);
         mOutputTexture = tex;
-        mUploaders.add(uploader);
+        if(uploader != null)
+            mUploaders.add(uploader);
     }
 
     @Override

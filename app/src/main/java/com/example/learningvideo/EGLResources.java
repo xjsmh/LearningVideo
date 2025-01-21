@@ -3,17 +3,38 @@ package com.example.learningvideo;
 import android.opengl.EGLConfig;
 import android.opengl.EGLContext;
 import android.opengl.EGLDisplay;
+import android.opengl.EGLSurface;
 
 import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
 
 public class EGLResources {
     private final boolean mIsNeedShared;
     private EGLContext mEGLContext;
     private EGLConfig mEGLConfig;
     private EGLDisplay mEGLDisplay;
+    private EGLSurface mEGLDrawSurface;
     private int mProgram;
+    // 注意FBO并不是EGL共享资源，这里只是为了方便使用加上
+    private int mFBO = -1;
+
+    public int getFBO() {
+        return mFBO;
+    }
+
+    public EGLResources setFBO(int FBO) {
+        mFBO = FBO;
+        return this;
+    }
+
+    public EGLSurface getEGLDrawSurface() {
+        return mEGLDrawSurface;
+    }
+
+    public EGLResources setEGLDrawSurface(EGLSurface EGLDrawSurface) {
+        mEGLDrawSurface = EGLDrawSurface;
+        return this;
+    }
+
     private int mTexture;
     private int mTextureType;
     private VertexAttrib mPosAttrib;

@@ -27,6 +27,7 @@ import androidx.annotation.NonNull;
 
 import com.example.learningvideo.EGLResources;
 import com.example.learningvideo.Filter.FilterBase;
+import com.example.learningvideo.Filter.FrameCapture;
 import com.example.learningvideo.Filter.GrayMask;
 import com.example.learningvideo.Filter.NV12ToRGBA;
 
@@ -55,7 +56,7 @@ public class Renderer4 implements IRenderer {
     private int mTexPosLoc;
     private int mTexSamplerLoc;
     private int mRenderTex;
-    private final List<FilterBase> mFrameProcessors = new ArrayList<>();
+    private final List<FilterBase> mFilterList = new ArrayList<>();
     private final int[] mFrameTex = new int[2];
     ByteBuffer mYUV;
 
@@ -102,7 +103,7 @@ public class Renderer4 implements IRenderer {
         mYUV = (ByteBuffer)msg.obj;
 
         EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext);
-        for (FilterBase processor : mFrameProcessors) {
+        for (FilterBase processor : mFilterList) {
             processor.process(mEGLContext, EGL14.eglGetCurrentDisplay(), EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW));
         }
 
@@ -123,7 +124,7 @@ public class Renderer4 implements IRenderer {
         EGL14.eglSwapBuffers(mEGLDisplay, mEGLSurface);
         GLES20.glDisableVertexAttribArray(mPosLoc);
         GLES20.glDisableVertexAttribArray(mTexPosLoc);
-        GLES20.glBindTexture(mFrameProcessors.get(mFrameProcessors.size()-1).getOutTextureType(), GLES20.GL_NONE);
+        GLES20.glBindTexture(mFilterList.get(mFilterList.size()-1).getOutTextureType(), GLES20.GL_NONE);
 
         Log.e(TAG, "render "+ mRenderFrame++);
         mHandler.sendEmptyMessage(MSG_ACTION_COMPLETED);
@@ -196,10 +197,12 @@ public class Renderer4 implements IRenderer {
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,  GLES20.GL_NONE);
         }
 
-        mFrameProcessors.add(createNV12ToRGBA(width, height));
-        mFrameProcessors.add(createGrayMask(width, height));
-
-        mRenderTex = mFrameProcessors.get(mFrameProcessors.size()-1).getOutputTexture();
+        mFilterList.add(createNV12ToRGBA(width, height));
+        mFilterList.add(createGrayMask(width, height));
+        FilterBase frameCapture = new FrameCapture(mFilterList.get(mFilterList.size()-1), mEGLContext, mEGLDisplay,mEGLConfig, mFilterList.get(mFilterList.size()-1).getOutTextureType(), width, height);
+        frameCapture.addInputTexture(mFilterList.get(mFilterList.size()-1).getOutputTexture(), GLES20.GL_RGBA);
+        mFilterList.add(frameCapture);
+        mRenderTex = mFilterList.get(mFilterList.size()-1).getOutputTexture();
         mEGLContext = EGL14.eglGetCurrentContext();
         String vertexShader =
                 "attribute vec2 pos;" +
@@ -213,7 +216,7 @@ public class Renderer4 implements IRenderer {
         GLES20.glShaderSource(v, vertexShader);
         GLES20.glCompileShader(v);
 
-        String samplerType = (mFrameProcessors.get(mFrameProcessors.size()-1).getOutTextureType() == GLES20.GL_TEXTURE_2D) ? "sampler2D" : "samplerExternalOES";
+        String samplerType = (mFilterList.get(mFilterList.size()-1).getOutTextureType() == GLES20.GL_TEXTURE_2D) ? "sampler2D" : "samplerExternalOES";
         String fragmentShader =
                 "##extension GL_OES_EGL_image_external : require \n" +
                 "precision mediump float;" +
@@ -240,8 +243,8 @@ public class Renderer4 implements IRenderer {
     }
 
     private FilterBase createGrayMask(int width, int height) {
-        FilterBase grayMask = new GrayMask(mEGLDisplay,mEGLConfig, mFrameProcessors.get(mFrameProcessors.size()-1).getOutTextureType(), width, height);
-        grayMask.addInputTexture(mFrameProcessors.get(mFrameProcessors.size()-1).getOutputTexture(), GLES20.GL_RGBA, (int tex, int slot, int samplerLoc) -> {
+        FilterBase grayMask = new GrayMask(mFilterList.get(mFilterList.size()-1), mEGLContext, mEGLDisplay,mEGLConfig, mFilterList.get(mFilterList.size()-1).getOutTextureType(), width, height);
+        grayMask.addInputTexture(mFilterList.get(mFilterList.size()-1).getOutputTexture(), GLES20.GL_RGBA, (int tex, int slot, int samplerLoc) -> {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex);
             GLES20.glUniform1i(samplerLoc, slot);
@@ -251,7 +254,7 @@ public class Renderer4 implements IRenderer {
 
     @NonNull
     private FilterBase createNV12ToRGBA(int width, int height) {
-        FilterBase nV12ToRGBA = new NV12ToRGBA(mEGLDisplay,mEGLConfig,GLES20.GL_TEXTURE_2D, width, height);
+        FilterBase nV12ToRGBA = new NV12ToRGBA(null, mEGLContext, mEGLDisplay, mEGLConfig, GLES20.GL_TEXTURE_2D, width, height);
         nV12ToRGBA.addInputTexture(mFrameTex[0], GLES20.GL_LUMINANCE,
                 (int tex, int slot, int samplerLoc) -> {
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);

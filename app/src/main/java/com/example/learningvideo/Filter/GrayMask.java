@@ -7,6 +7,8 @@ import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
 import android.opengl.GLES20;
 
+import com.example.learningvideo.EGLResources;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -48,11 +50,12 @@ public class GrayMask extends FilterBase {
             throw new RuntimeException();
         }
         mInputTexture.add(tex);
-        mUploaders.add(uploader);
+        if(uploader != null)
+            mUploaders.add(uploader);
     }
 
-    public GrayMask(EGLDisplay display, EGLConfig config, int inTexType, int width, int height) {
-        super(display, config, inTexType, width, height);
+    public GrayMask(FilterBase lastFilter, EGLContext context, EGLDisplay display, EGLConfig config, int inTexType, int width, int height) {
+        super(lastFilter, context, display, config, inTexType, width, height);
         int[] attrib_list = {
                 EGL14.EGL_WIDTH, width,
                 EGL14.EGL_HEIGHT, height,
@@ -124,6 +127,20 @@ public class GrayMask extends FilterBase {
         mPosLoc = GLES20.glGetAttribLocation(mFBOProgram, "pos");
         mTexPosLoc = GLES20.glGetAttribLocation(mFBOProgram, "texPos");
         mTexSamplersLoc.add(GLES20.glGetUniformLocation(mFBOProgram, "texSampler1"));
+
+        mLastFilter = lastFilter;
+        mEGLResources = new EGLResources(false)
+                .setEGLContext(context)
+                .setEGLDisplay(display)
+                .setEGLConfig(config)
+                .setEGLDrawSurface(mEGLSurface)
+                .setProgram(mFBOProgram)
+                .setFBO(mFBO)
+                .setPosAttrib(new EGLResources.VertexAttrib(2, mPosLoc, GLES20.GL_FLOAT, 16, sVertices, 0))
+                .setTexPosAttrib(new EGLResources.VertexAttrib(2, mTexPosLoc, GLES20.GL_FLOAT, 16, sVertices, 2))
+                .setDrawOrdersAttrib(new EGLResources.ElementAttrib(6, GLES20.GL_UNSIGNED_BYTE, sDrawOrders, 0))
+                .setTextureType(getOutTextureType())
+                .setTexture(getOutputTexture());
     }
 
     @Override
