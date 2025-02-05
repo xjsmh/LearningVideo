@@ -39,7 +39,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Renderer1 implements IRenderer, TextureView.SurfaceTextureListener{
+public class Renderer1 extends RendererBase implements TextureView.SurfaceTextureListener{
     private static final String TAG = "Renderer1";
     private int mRenderFrame = 0;
 
@@ -80,14 +80,18 @@ public class Renderer1 implements IRenderer, TextureView.SurfaceTextureListener{
         sDrawOrders.put(drawOrders).position(0);
     }
 
-    @Override
-    public void start(Context context, Handler handler, int width, int height) {
+    public Renderer1(Context context, Handler handler) {
+        super(context, handler);
         mContext = context;
         mHandler = handler;
+        mTextureView = new TextureView(mContext);
+        mTextureView.setSurfaceTextureListener(this);
+    }
+
+    @Override
+    public void start(int width, int height) {
         mWidth = width;
         mHeight = height;
-        mTextureView = new TextureView(context);
-        mTextureView.setSurfaceTextureListener(this);
         DisplayMetrics dm = mTextureView.getResources().getDisplayMetrics();
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
         lp.width = dm.widthPixels;

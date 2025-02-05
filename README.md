@@ -14,9 +14,13 @@ Core：使用 Handler 实现类似状态机的工作方式，串联 解码模块
 
 Decoder：解码模块，涉及 MediaCodec, MediaExtractor。
 
+    Decoder1：MediaExtractor + MediaCodec 实现解码。
+
+    Decoder2 (Client + Service)：解码服务实现，将解码工作放在单独的Service进程上处理，与Renderer5搭配使用。
+
 Encoder：编码模块，涉及 MediaCodec，MediaMuxer，EGL共享资源。
 
-Renderer：渲染模块，用于渲染视频
+Renderer：渲染模块，用于渲染视频。
 
     Renderer1：TextureView + SurfaceTexture + EGL 实现。
   
@@ -25,6 +29,8 @@ Renderer：渲染模块，用于渲染视频
     Renderer3：SurfaceTexture + EGL 实现。
   
     Renderer4：EGL + YUV转RGB 实现。
+
+    Renderer5：Decoder2Service + Decoder2Client + Hardwarebuffer 实现跨进程解码和共享纹理（参考 https://github.com/keith2018/SharedTexture ）。
   
 Filter：滤镜模块，用于处理解码后渲染前的视频帧，嵌入在Renderer中。
 

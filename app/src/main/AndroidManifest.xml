@@ -12,6 +12,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LearningVideo"
         tools:targetApi="31">
+        <service
+            android:name=".Decoder.Decoder2Service"
+            android:enabled="true"
+            android:exported="false"
+            android:process=":decode_service"></service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true">

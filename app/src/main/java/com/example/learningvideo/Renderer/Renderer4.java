@@ -37,7 +37,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Renderer4 implements IRenderer {
+public class Renderer4 extends RendererBase {
     private static final String TAG = "Renderer4";
     private int mRenderFrame = 0;
     private SurfaceView mSurfaceView;
@@ -77,12 +77,17 @@ public class Renderer4 implements IRenderer {
         sDrawOrders.put(orders).position(0);
     }
 
-    @Override
-    public void start(Context context, Handler handler, int width, int height) {
+    public Renderer4(Context context, Handler handler) {
+        super(context, handler);
         mContext = context;
         mHandler = handler;
         mSurfaceView = new SurfaceView(context);
         mSurfaceView.getHolder().addCallback(new MyCallback());
+    }
+
+    @Override
+    public void start(int width, int height) {
+
     }
 
     @Override

@@ -11,24 +11,32 @@ import android.view.View;
 
 import androidx.annotation.NonNull;
 
-import com.example.learningvideo.Renderer.IRenderer;
+import com.example.learningvideo.Decoder.DecoderBase;
+import com.example.learningvideo.Decoder.Decoder1;
+import com.example.learningvideo.Decoder.Decoder2Client;
+
+import com.example.learningvideo.Renderer.RendererBase;
 import com.example.learningvideo.Renderer.Renderer1;
 import com.example.learningvideo.Renderer.Renderer2;
 import com.example.learningvideo.Renderer.Renderer3;
 import com.example.learningvideo.Renderer.Renderer4;
+import com.example.learningvideo.Renderer.Renderer5;
 
 public class Core {
     public static final int MSG_SETUP_EGL = 1;
-    public static final int MSG_SURFACE_CREATED = 2;
-    public static final int MSG_DECODE = 3;
-    public static final int MSG_RENDER = 4;
-    public static final int MSG_ENCODE = 5;
-    public static final int MSG_ACTION_COMPLETED = 6;
-    public static final int MSG_DONE = 7;
+    public static final int MSG_CREATED = 2;
+    public static final int MSG_START = 3;
+    public static final int MSG_SURFACE_CREATED = 4;
+    public static final int MSG_DECODE = 5;
+    public static final int MSG_RENDER = 6;
+    public static final int MSG_ENCODE = 7;
+    public static final int MSG_ACTION_COMPLETED = 8;
+    public static final int MSG_DONE = 9;
     private final Context mContext;
-    Decoder mDecoder;
+    private final AssetFileDescriptor mAfd;
+    DecoderBase mDecoder;
     Encoder mEncoder;
-    IRenderer mRenderer;
+    RendererBase mRenderer;
     HandlerThread mWorkThread;
     Handler mWorkHandler;
     int[] mActionFlow = {MSG_DECODE, MSG_RENDER, MSG_ENCODE};
@@ -42,11 +50,25 @@ public class Core {
         @Override
         public void handleMessage(@NonNull Message msg) {
             switch(msg.what) {
+                case MSG_CREATED:
+
+                    // so ugly
+                    if (mRenderer instanceof Renderer5) {
+                        mDecoder = new Decoder2Client(mAfd, mWorkHandler, mContext);
+                    } else {
+                        mDecoder = new Decoder1(mAfd, mWorkHandler, mContext);
+                    }
+
+                    mEncoder = new Encoder(mWorkHandler);
+                    break;
+                case MSG_START:
+                    mRenderer.start(mDecoder.getWidth(), mDecoder.getHeight());
+                    break;
                 case MSG_SETUP_EGL:
                     mRenderer.setup(mDecoder.getWidth(), mDecoder.getHeight());
                     break;
                 case MSG_SURFACE_CREATED:
-                    mDecoder.setSurface((Surface) msg.obj);
+                    mDecoder.setObject(msg.obj);
                     mDecoder.start();
                     mEncoder.start(mRenderer.getEGLResource());
                 case MSG_DECODE:
@@ -84,13 +106,13 @@ public class Core {
         mWorkThread = new HandlerThread("work-thread");
         mWorkThread.start();
         mWorkHandler = new WorkHandler(mWorkThread.getLooper());
-        mDecoder = new Decoder(afd, mWorkHandler);
-        mEncoder = new Encoder(mWorkHandler);
-        mRenderer = new Renderer2();
         mContext = context;
+        mAfd = afd;
+        mRenderer = new Renderer5(mContext, mWorkHandler);
+        Message.obtain(mWorkHandler, MSG_CREATED).sendToTarget();
     }
     public void start() {
-        mRenderer.start(mContext, mWorkHandler, mDecoder.getWidth(), mDecoder.getHeight());
+        Message.obtain(mWorkHandler, MSG_START).sendToTarget();
     }
 
     public View getSurfaceView(){

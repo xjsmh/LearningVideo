@@ -1,8 +1,9 @@
-package com.example.learningvideo;
+package com.example.learningvideo.Decoder;
 
 import static com.example.learningvideo.Core.MSG_ACTION_COMPLETED;
 import static com.example.learningvideo.Core.MSG_DONE;
 
+import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
@@ -16,7 +17,7 @@ import android.view.Surface;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-public class Decoder {
+public class Decoder1 extends DecoderBase {
     private static final String TAG = "Decoder";
     Handler mHandler;
     MediaCodec mDecoder;
@@ -28,11 +29,20 @@ public class Decoder {
     private static int mDecodeFrame = 0;
     private MediaFormat mSrcFormat;
     private Surface mSurface = null;
-    public void setSurface(Surface surface) {
-        this.mSurface = surface;
+    private boolean mIsEOS;
+
+    @Override
+    public boolean isEOS() {
+        return mIsEOS;
     }
 
-    public Decoder(AssetFileDescriptor afd, Handler workHandler) {
+    @Override
+    public void setObject(Object obj) {
+        if (obj instanceof Surface)
+            this.mSurface = (Surface)obj;
+    }
+
+    public Decoder1(AssetFileDescriptor afd, Handler workHandler, Context ctx) {
         mHandler = workHandler;
         mDeMuxer = new MediaExtractor();
         try {
@@ -60,20 +70,24 @@ public class Decoder {
 
     }
 
+    @Override
     public int getHeight() {
         return mHeight;
     }
 
+    @Override
     public int getWidth() {
         return mWidth;
     }
 
+    @Override
     public void start() {
         mSrcFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar);
         mDecoder.configure(mSrcFormat, mSurface, null, 0);
         mDecoder.start();
     }
 
+    @Override
     public void decode() {
         boolean gotOutput = false;
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
@@ -94,21 +108,25 @@ public class Decoder {
             idx = mDecoder.dequeueOutputBuffer(info, 1000);
             if (idx > 0) {
                 if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) > 0) {
-                    Message.obtain(mHandler, MSG_DONE).sendToTarget();
+                    if (mHandler != null)
+                        Message.obtain(mHandler, MSG_DONE).sendToTarget();
+                    mIsEOS = true;
                     break;
                 }
                 Log.e(TAG, "decode " + mDecodeFrame++);
                 if (mSurface == null) {
                     mYUVData = mDecoder.getOutputBuffer(idx);
                     if (mYUVData != null) {
-                        Message.obtain(mHandler,MSG_ACTION_COMPLETED, mWidth, mHeight, mYUVData).sendToTarget();
+                        if (mHandler != null)
+                            Message.obtain(mHandler,MSG_ACTION_COMPLETED, mWidth, mHeight, mYUVData).sendToTarget();
                         gotOutput = true;
                     }
                     mDecoder.releaseOutputBuffer(idx, false);
                 } else {
                     gotOutput = true;
                     mDecoder.releaseOutputBuffer(idx, true);
-                    Message.obtain(mHandler,MSG_ACTION_COMPLETED, mWidth, mHeight).sendToTarget();
+                    if (mHandler != null)
+                        Message.obtain(mHandler,MSG_ACTION_COMPLETED, mWidth, mHeight).sendToTarget();
                 }
             } else if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 MediaFormat fmt = mDecoder.getOutputFormat();
@@ -120,6 +138,7 @@ public class Decoder {
         }
     }
 
+    @Override
     public void release() {
         mDeMuxer.release();
         mDecoder.stop();

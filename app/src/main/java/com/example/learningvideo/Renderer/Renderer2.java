@@ -39,7 +39,7 @@ import java.util.List;
 import javax.microedition.khronos.opengles.GL10;
 import javax.microedition.khronos.egl.EGLConfig;
 
-public class Renderer2 implements IRenderer {
+public class Renderer2 extends RendererBase {
     private static final String TAG = "Renderer2";
     private Handler mHandler;
     private MySurfaceView mSurfaceView;
@@ -53,8 +53,8 @@ public class Renderer2 implements IRenderer {
     private EGLContext mEGLContext;
     private SurfaceTexture mSurfaceTexture;
     private int mRenderFrame = 0;
-    int mWidth;
-    int mHeight;
+    int mWidth = -1;
+    int mHeight = -1;
     private boolean mSizeChanged = false;
     private Context mContext;
     private final List<FilterBase> mFilterList = new ArrayList<>();
@@ -80,6 +80,16 @@ public class Renderer2 implements IRenderer {
     private EGLSurface mEGLSurface;
     private android.opengl.EGLConfig mEGLConfig;
 
+    public Renderer2(Context context, Handler handler) {
+        super(context, handler);
+        mContext = context;
+        mHandler = handler;
+        mSurfaceView = new MySurfaceView(context);
+        mSurfaceView.setEGLContextClientVersion(2);
+        mSurfaceView.setRenderer(mSurfaceView);
+        mSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+    }
+
     public boolean isFrameAvailable() {
         return mIsFrameAvailable;
     }
@@ -87,15 +97,9 @@ public class Renderer2 implements IRenderer {
     private volatile boolean mIsFrameAvailable = false;
 
     @Override
-    public void start(Context context, Handler handler, int width, int height) {
-        mContext = context;
-        mHandler = handler;
+    public void start(int width, int height) {
         mWidth = width;
         mHeight = height;
-        mSurfaceView = new MySurfaceView(context);
-        mSurfaceView.setEGLContextClientVersion(2);
-        mSurfaceView.setRenderer(mSurfaceView);
-        mSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
         ((Activity)mContext).runOnUiThread(()->{
             DisplayMetrics dm = mSurfaceView.getResources().getDisplayMetrics();
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
@@ -236,6 +240,7 @@ public class Renderer2 implements IRenderer {
 
         @Override
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+            while(mWidth < 0 || mHeight < 0);
             setup(mWidth, mHeight);
             Message.obtain(mHandler, MSG_SURFACE_CREATED, new Surface(mSurfaceTexture)).sendToTarget();
         }
@@ -259,6 +264,7 @@ public class Renderer2 implements IRenderer {
                     this.setLayoutParams(lp);
                 });
             }
+            mEGLSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW);
             for (FilterBase fp : mFilterList) {
                 fp.process(mEGLContext, mEGLDisplay, mEGLSurface);
             }
