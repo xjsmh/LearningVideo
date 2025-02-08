@@ -144,7 +144,7 @@ public class Encoder {
         GLES20.glBindTexture(mEGLResources.getTextureType(), GLES20.GL_NONE);
         GLES20.glDisableVertexAttribArray(posAttrib.getLoc());
         GLES20.glDisableVertexAttribArray(texPosAttrib.getLoc());
-        GLES20.glFinish();
+        //GLES20.glFinish();
         Log.e(TAG, "encode " + mEncodeFrame++);
 
         boolean gotOutput = false;

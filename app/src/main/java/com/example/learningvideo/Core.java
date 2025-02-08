@@ -2,24 +2,26 @@ package com.example.learningvideo;
 
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
+import android.opengl.GLES11Ext;
+import android.opengl.GLES20;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
-import android.view.Surface;
 import android.view.View;
 
 import androidx.annotation.NonNull;
 
+import com.example.learningvideo.Decoder.Decoder2Client;
+import com.example.learningvideo.Decoder.Decoder3Client;
 import com.example.learningvideo.Decoder.DecoderBase;
 import com.example.learningvideo.Decoder.Decoder1;
-import com.example.learningvideo.Decoder.Decoder2Client;
 
-import com.example.learningvideo.Renderer.RendererBase;
 import com.example.learningvideo.Renderer.Renderer1;
 import com.example.learningvideo.Renderer.Renderer2;
 import com.example.learningvideo.Renderer.Renderer3;
 import com.example.learningvideo.Renderer.Renderer4;
+import com.example.learningvideo.Renderer.RendererBase;
 import com.example.learningvideo.Renderer.Renderer5;
 
 public class Core {
@@ -54,7 +56,15 @@ public class Core {
 
                     // so ugly
                     if (mRenderer instanceof Renderer5) {
-                        mDecoder = new Decoder2Client(mAfd, mWorkHandler, mContext);
+                        mRenderer.setFrameTextureType(GLES11Ext.GL_TEXTURE_EXTERNAL_OES);
+                        int frameTextureType = mRenderer.getFrameTextureType();
+                        if (frameTextureType == GLES20.GL_TEXTURE_2D) {
+                            mDecoder = new Decoder2Client(mAfd, mWorkHandler, mContext);
+                        } else if (frameTextureType == GLES11Ext.GL_TEXTURE_EXTERNAL_OES){
+                            mDecoder = new Decoder3Client(mAfd, mWorkHandler, mContext);
+                        } else {
+                            throw new RuntimeException();
+                        }
                     } else {
                         mDecoder = new Decoder1(mAfd, mWorkHandler, mContext);
                     }

@@ -42,11 +42,11 @@ import java.util.List;
 public class Renderer1 extends RendererBase implements TextureView.SurfaceTextureListener{
     private static final String TAG = "Renderer1";
     private int mRenderFrame = 0;
-
     private Handler mHandler;
     TextureView mTextureView;
     SurfaceTexture mRenderSurfaceTexture;
     SurfaceTexture mFrameSurfaceTexture;
+    int mFrameTextureType;
     private EGLDisplay mEGLDisplay;
     private EGLConfig mEGLConfig;
     private EGLContext mEGLContext;
@@ -84,6 +84,7 @@ public class Renderer1 extends RendererBase implements TextureView.SurfaceTextur
         super(context, handler);
         mContext = context;
         mHandler = handler;
+        mFrameTextureType = GLES11Ext.GL_TEXTURE_EXTERNAL_OES;
         mTextureView = new TextureView(mContext);
         mTextureView.setSurfaceTextureListener(this);
     }
@@ -202,16 +203,16 @@ public class Renderer1 extends RendererBase implements TextureView.SurfaceTextur
         int[] textures = new int[1];
         GLES20.glGenTextures(1, textures, 0);
         int frameTexture = textures[0];
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, frameTexture);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_NONE);
+        GLES20.glBindTexture(mFrameTextureType, frameTexture);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glBindTexture(mFrameTextureType, GLES20.GL_NONE);
         mFrameSurfaceTexture = new SurfaceTexture(frameTexture);
         mFrameSurfaceTexture.setOnFrameAvailableListener( (SurfaceTexture st) -> { mIsFrameAvailable = true; } );
 
-        FilterBase doNothing = new DoNothingButUploadImage(null, mEGLContext, mEGLDisplay, configs[0], GLES11Ext.GL_TEXTURE_EXTERNAL_OES, width, height);
+        FilterBase doNothing = new DoNothingButUploadImage(null, mEGLContext, mEGLDisplay, configs[0], mFrameTextureType, width, height);
         doNothing.addInputTexture(frameTexture, GLES20.GL_RGBA,
                 (int tex, int slot, int samplerLoc) -> {
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);
@@ -277,6 +278,11 @@ public class Renderer1 extends RendererBase implements TextureView.SurfaceTextur
     @Override
     public boolean isFrameAvailable() {
         return mIsFrameAvailable;
+    }
+
+    @Override
+    public int getFrameTextureType() {
+        return mFrameTextureType;
     }
 
     @Override

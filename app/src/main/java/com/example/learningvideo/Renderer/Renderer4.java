@@ -58,6 +58,7 @@ public class Renderer4 extends RendererBase {
     private int mRenderTex;
     private final List<FilterBase> mFilterList = new ArrayList<>();
     private final int[] mFrameTex = new int[2];
+    int mFrameTextureType;
     ByteBuffer mYUV;
 
     static {
@@ -81,14 +82,13 @@ public class Renderer4 extends RendererBase {
         super(context, handler);
         mContext = context;
         mHandler = handler;
+        mFrameTextureType = GLES20.GL_TEXTURE_2D;
         mSurfaceView = new SurfaceView(context);
         mSurfaceView.getHolder().addCallback(new MyCallback());
     }
 
     @Override
-    public void start(int width, int height) {
-
-    }
+    public void start(int width, int height) {}
 
     @Override
     public void render(Message msg) {
@@ -194,12 +194,12 @@ public class Renderer4 extends RendererBase {
 
         GLES20.glGenTextures(2, mFrameTex, 0);
         for (int i = 0; i < 2; i++) {
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mFrameTex[i]);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_NEAREST);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_NEAREST);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,  GLES20.GL_NONE);
+            GLES20.glBindTexture(mFrameTextureType, mFrameTex[i]);
+            GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_NEAREST);
+            GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_NEAREST);
+            GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+            GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+            GLES20.glBindTexture(mFrameTextureType,  GLES20.GL_NONE);
         }
 
         mFilterList.add(createNV12ToRGBA(width, height));
@@ -251,7 +251,7 @@ public class Renderer4 extends RendererBase {
         FilterBase grayMask = new GrayMask(mFilterList.get(mFilterList.size()-1), mEGLContext, mEGLDisplay,mEGLConfig, mFilterList.get(mFilterList.size()-1).getOutTextureType(), width, height);
         grayMask.addInputTexture(mFilterList.get(mFilterList.size()-1).getOutputTexture(), GLES20.GL_RGBA, (int tex, int slot, int samplerLoc) -> {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex);
+            GLES20.glBindTexture(mFilterList.get(mFilterList.size()-1).getOutTextureType(), tex);
             GLES20.glUniform1i(samplerLoc, slot);
         });
         return grayMask;
@@ -259,20 +259,20 @@ public class Renderer4 extends RendererBase {
 
     @NonNull
     private FilterBase createNV12ToRGBA(int width, int height) {
-        FilterBase nV12ToRGBA = new NV12ToRGBA(null, mEGLContext, mEGLDisplay, mEGLConfig, GLES20.GL_TEXTURE_2D, width, height);
+        FilterBase nV12ToRGBA = new NV12ToRGBA(null, mEGLContext, mEGLDisplay, mEGLConfig, mFrameTextureType, width, height);
         nV12ToRGBA.addInputTexture(mFrameTex[0], GLES20.GL_LUMINANCE,
                 (int tex, int slot, int samplerLoc) -> {
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);
-                    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex);
-                    GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_LUMINANCE,mWidth, mHeight,0,GLES20.GL_LUMINANCE,GLES20.GL_UNSIGNED_BYTE,mYUV.position(0));
+                    GLES20.glBindTexture(mFrameTextureType, tex);
+                    GLES20.glTexImage2D(mFrameTextureType,0,GLES20.GL_LUMINANCE,mWidth, mHeight,0,GLES20.GL_LUMINANCE,GLES20.GL_UNSIGNED_BYTE,mYUV.position(0));
                     GLES20.glUniform1i(samplerLoc, slot);
                 }
         );
         nV12ToRGBA.addInputTexture(mFrameTex[1], GLES20.GL_LUMINANCE_ALPHA,
                 (int tex, int slot, int samplerLoc) -> {
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);
-                    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex);
-                    GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_LUMINANCE_ALPHA,mWidth / 2, mHeight / 2,0,GLES20.GL_LUMINANCE_ALPHA,GLES20.GL_UNSIGNED_BYTE,mYUV.position(mWidth * mHeight));
+                    GLES20.glBindTexture(mFrameTextureType, tex);
+                    GLES20.glTexImage2D(mFrameTextureType,0,GLES20.GL_LUMINANCE_ALPHA,mWidth / 2, mHeight / 2,0,GLES20.GL_LUMINANCE_ALPHA,GLES20.GL_UNSIGNED_BYTE,mYUV.position(mWidth * mHeight));
                     GLES20.glUniform1i(samplerLoc, slot);
                 }
         );
@@ -296,6 +296,11 @@ public class Renderer4 extends RendererBase {
     @Override
     public boolean isFrameAvailable() {
         return true;
+    }
+
+    @Override
+    public int getFrameTextureType() {
+        return mFrameTextureType;
     }
 
     private class MyCallback implements SurfaceHolder.Callback {

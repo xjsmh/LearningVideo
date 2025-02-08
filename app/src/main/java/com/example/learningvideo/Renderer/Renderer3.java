@@ -59,7 +59,8 @@ public class Renderer3 extends RendererBase {
     private int mTexPosLoc;
     private int mTexSamplerLoc;
     private int mRenderTex;
-    private SurfaceTexture mSurfaceTexture;
+    private SurfaceTexture mFrameSurfaceTexture;
+    int mFrameTextureType;
     private volatile boolean mIsFrameAvailable = false;
     private final List<FilterBase> mFilterList = new ArrayList<>();
 
@@ -121,11 +122,11 @@ public class Renderer3 extends RendererBase {
         GLES20.glEnableVertexAttribArray(mTexPosLoc);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glUniform1i(mTexSamplerLoc, 0);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mRenderTex);
+        GLES20.glBindTexture(mFilterList.get(mFilterList.size()-1).getOutTextureType(), mRenderTex);
         GLES20.glDrawElements(GLES20.GL_TRIANGLE_STRIP, 6, GLES20.GL_UNSIGNED_BYTE, sDrawOrders.position(0));
         Log.e(TAG, "render "+ mRenderFrame++);
         EGL14.eglSwapBuffers(mEGLDisplay, mEGLSurface);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, GLES20.GL_NONE);
+        GLES20.glBindTexture(mFilterList.get(mFilterList.size()-1).getOutTextureType(), GLES20.GL_NONE);
         GLES20.glDisableVertexAttribArray(mPosLoc);
         GLES20.glDisableVertexAttribArray(mTexPosLoc);
         Message.obtain(mHandler, MSG_ACTION_COMPLETED).sendToTarget();
@@ -190,21 +191,21 @@ public class Renderer3 extends RendererBase {
 
         int[] frameTex = new int[1];
         GLES20.glGenTextures(1, frameTex, 0);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, frameTex[0]);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_NONE);
+        GLES20.glBindTexture(mFrameTextureType, frameTex[0]);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glBindTexture(mFrameTextureType, GLES20.GL_NONE);
 
-        mSurfaceTexture = new SurfaceTexture(frameTex[0]);
-        mSurfaceTexture.setOnFrameAvailableListener((SurfaceTexture surfaceTexture) -> {mIsFrameAvailable = true;});
+        mFrameSurfaceTexture = new SurfaceTexture(frameTex[0]);
+        mFrameSurfaceTexture.setOnFrameAvailableListener((SurfaceTexture surfaceTexture) -> {mIsFrameAvailable = true;});
 
-        FilterBase doNothing = new DoNothingButUploadImage(null, mEGLContext, mEGLDisplay, configs[0], GLES11Ext.GL_TEXTURE_EXTERNAL_OES, width, height);
+        FilterBase doNothing = new DoNothingButUploadImage(null, mEGLContext, mEGLDisplay, configs[0], mFrameTextureType, width, height);
         doNothing.addInputTexture(frameTex[0], GLES20.GL_RGBA,
                 (int tex, int slot, int samplerLoc) -> {
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);
-                    mSurfaceTexture.updateTexImage();
+                    mFrameSurfaceTexture.updateTexImage();
                     GLES20.glUniform1i(samplerLoc, slot);
                 });
         mFilterList.add(doNothing);
@@ -260,11 +261,17 @@ public class Renderer3 extends RendererBase {
         mTexPosLoc = GLES20.glGetAttribLocation(mProgram, "texPos");
         mTexSamplerLoc = GLES20.glGetUniformLocation(mProgram, "texSampler");
 
-        Message.obtain(mHandler, MSG_SURFACE_CREATED, new Surface(mSurfaceTexture)).sendToTarget();
+        Message.obtain(mHandler, MSG_SURFACE_CREATED, new Surface(mFrameSurfaceTexture)).sendToTarget();
     }
     public boolean isFrameAvailable() {
         return mIsFrameAvailable;
     }
+
+    @Override
+    public int getFrameTextureType() {
+        return mFrameTextureType;
+    }
+
     @Override
     public EGLResources getEGLResource() {
         return new EGLResources(false)

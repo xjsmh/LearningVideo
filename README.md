@@ -16,7 +16,11 @@ Decoder：解码模块，涉及 MediaCodec, MediaExtractor。
 
     Decoder1：MediaExtractor + MediaCodec 实现解码。
 
-    Decoder2 (Client + Service)：解码服务实现，将解码工作放在单独的Service进程上处理，与Renderer5搭配使用。
+    DecoderClientBase + DecoderService：解码服务实现，将解码工作放在单独的Service进程上处理，并使用HardwareBuffer将YUV数据传递到渲染进程，Renderer5通过DecoderClient与DecoderService通信。
+
+    - Decoder2Client + Decoder2：GPU写，GPU读，AHardwareBuffer Format 为 AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM。
+
+    - Decoder3Client + Decoder3：CPU写，GPU读，AHardwareBuffer Format 为 AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420。
 
 Encoder：编码模块，涉及 MediaCodec，MediaMuxer，EGL共享资源。
 

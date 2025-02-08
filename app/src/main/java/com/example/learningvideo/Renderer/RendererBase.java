@@ -16,4 +16,6 @@ public abstract class RendererBase {
     public abstract void setup(int width, int height);
     public abstract EGLResources getEGLResource();
     public abstract boolean isFrameAvailable();
+    public void setFrameTextureType(int texture) { }
+    public abstract int getFrameTextureType();
 }

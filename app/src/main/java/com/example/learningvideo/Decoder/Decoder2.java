@@ -1,45 +1,39 @@
 package com.example.learningvideo.Decoder;
 
-import android.app.Service;
-import android.content.Intent;
 import android.content.res.AssetFileDescriptor;
 import android.graphics.SurfaceTexture;
 import android.hardware.HardwareBuffer;
 import android.opengl.EGL14;
-import android.opengl.GLES11Ext;
-import android.opengl.GLES20;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.IBinder;
-import android.os.Looper;
-import android.os.Message;
-import android.os.ParcelFileDescriptor;
-import android.os.RemoteException;
 import android.opengl.EGLConfig;
 import android.opengl.EGLContext;
 import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
-import android.util.Log;
+import android.opengl.GLES11Ext;
+import android.opengl.GLES20;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.os.Message;
+import android.os.ParcelFileDescriptor;
+import android.os.RemoteException;
 import android.view.Surface;
 
 import androidx.annotation.NonNull;
 
-import com.example.learningvideo.IDecoder2Service;
+import com.example.learningvideo.IDecoderService;
 import com.example.learningvideo.SharedTexture;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
-
-public class Decoder2Service extends Service {
-    private final HandlerThread mWorkThread;
+class Decoder2 extends IDecoderService.Stub {
+    private HandlerThread mWorkThread;
     EGLSurface mEGLSurface;
-    String TAG = "Decode-Service";
     public static final int MSG_SETUP_EGL = 1;
     public static final int MSG_UPLOAD_FRAME = 2;
     public static final int MSG_GET_FENCE = 3;
-    DecoderBase mDecoder;
+    Decoder1 mDecoder;
     SharedTexture mSharedTexture;
     EGLDisplay mEGLDisplay;
     EGLContext mEGLContext;
@@ -60,10 +54,11 @@ public class Decoder2Service extends Service {
 
     private static final FloatBuffer sVertices;
     private static final ByteBuffer sDrawOrders;
+
     static {
         float[] vertices = {
                 -1, 1, 0, 1,
-                -1,-1, 0, 0,
+                -1, -1, 0, 0,
                 1, -1, 1, 0,
                 1, 1, 1, 1
         };
@@ -79,13 +74,115 @@ public class Decoder2Service extends Service {
 
     private SurfaceTexture mSurfaceTexture;
 
-    public Decoder2Service() {
-        if(!SharedTexture.isAvailable()) {
-            throw new RuntimeException();
-        }
+    private int mFrameNum = 0;
+
+    @Override
+    public void init(AssetFileDescriptor afd) throws RemoteException {
         mWorkThread = new HandlerThread("work-thread");
         mWorkThread.start();
         mHandler = new WorkHandler(mWorkThread.getLooper());
+        mDecoder = new Decoder1(afd, null, null);
+    }
+
+    @Override
+    public void start(HardwareBuffer hwBuf) throws RemoteException {
+        synchronized (mLock) {
+            Message.obtain(mHandler, MSG_SETUP_EGL, hwBuf).sendToTarget();
+            while (!mMessageHandled) {
+                try {
+                    mLock.wait();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            mMessageHandled = false;
+        }
+        mDecoder.start();
+    }
+
+    @Override
+    public boolean decode(ParcelFileDescriptor fence) throws RemoteException {
+        mDecoder.decode();
+        boolean eos = mDecoder.isEOS();
+        try {
+            if (!eos) {
+                synchronized (mLock) {
+                    Message.obtain(mHandler, MSG_UPLOAD_FRAME, fence).sendToTarget();
+                    while (!mMessageHandled) {
+                        try {
+                            mLock.wait();
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                    mMessageHandled = false;
+                }
+            }
+        } catch (RuntimeException e) {
+            throw new RuntimeException(e);
+        }
+
+        return eos;
+    }
+
+    @Override
+    public int getHeight() throws RemoteException {
+        return mDecoder.getHeight();
+    }
+
+    @Override
+    public int getWidth() throws RemoteException {
+        return mDecoder.getWidth();
+    }
+
+    @Override
+    public void release() throws RemoteException {
+        mDecoder.release();
+    }
+
+    @Override
+    public ParcelFileDescriptor getFence() {
+        synchronized (mLock) {
+            Message.obtain(mHandler, MSG_GET_FENCE).sendToTarget();
+            while (!mMessageHandled) {
+                try {
+                    mLock.wait();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            mMessageHandled = false;
+        }
+        return mFence;
+    }
+
+    public class WorkHandler extends Handler {
+        public WorkHandler(@NonNull Looper looper) {
+            super(looper);
+        }
+
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            synchronized (mLock) {
+                switch (msg.what) {
+                    case MSG_SETUP_EGL:
+                        onSetupEGL((HardwareBuffer) msg.obj);
+                        break;
+                    case MSG_UPLOAD_FRAME:
+                        if (!mFrameAvailable) {
+                            Message.obtain(this, MSG_UPLOAD_FRAME, msg.obj).sendToTarget();
+                        } else {
+                            onUploadFrame((ParcelFileDescriptor)msg.obj);
+                        }
+                        break;
+                    case MSG_GET_FENCE:
+                        mFence = mSharedTexture.createFenceFd();
+                        break;
+                }
+                mMessageHandled = true;
+                mLock.notify();
+            }
+        }
     }
 
     private void onSetupEGL(HardwareBuffer hwBuf) {
@@ -95,7 +192,7 @@ public class Decoder2Service extends Service {
         }
         int[] major = new int[1];
         int[] minor = new int[1];
-        if(!EGL14.eglInitialize(mEGLDisplay, major, 0, minor, 0)) {
+        if (!EGL14.eglInitialize(mEGLDisplay, major, 0, minor, 0)) {
             throw new RuntimeException();
         }
         int[] attribs = {
@@ -109,7 +206,7 @@ public class Decoder2Service extends Service {
         };
         EGLConfig[] configs = new EGLConfig[1];
         int[] num_config = new int[1];
-        if(!EGL14.eglChooseConfig(mEGLDisplay, attribs, 0, configs, 0, 1, num_config, 0)) {
+        if (!EGL14.eglChooseConfig(mEGLDisplay, attribs, 0, configs, 0, 1, num_config, 0)) {
             throw new RuntimeException();
         }
         mEGLConfig = configs[0];
@@ -131,7 +228,7 @@ public class Decoder2Service extends Service {
             throw new RuntimeException();
         }
 
-        if(!EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext)) {
+        if (!EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext)) {
             throw new RuntimeException();
         }
         GLES20.glClearColor(1, 0, 0, 1.0f);
@@ -145,10 +242,12 @@ public class Decoder2Service extends Service {
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_NEAREST);
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,  GLES20.GL_NONE);
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_NONE);
         mSurfaceTexture = new SurfaceTexture(mFrameTexture);
         mSurfaceTexture.setOnFrameAvailableListener(
-                (SurfaceTexture st) -> { mFrameAvailable = true; Log.e(TAG, "frame available"); }
+                (SurfaceTexture st) -> {
+                    mFrameAvailable = true;
+                }
         );
         mDecoder.setObject(new Surface(mSurfaceTexture));
 
@@ -160,9 +259,9 @@ public class Decoder2Service extends Service {
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_NEAREST);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,  GLES20.GL_NONE);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, GLES20.GL_NONE);
         mSharedTexture = new SharedTexture(hwBuf);
-        mSharedTexture.bindTexture(mFBOTexture);
+        mSharedTexture.bindTexture(mFBOTexture, GLES20.GL_TEXTURE_2D);
 
         GLES20.glGenFramebuffers(1, temp, 0);
         mFBO = temp[0];
@@ -209,128 +308,12 @@ public class Decoder2Service extends Service {
         mTexSamplerLoc = GLES20.glGetUniformLocation(mProgram, "texSampler");
     }
 
-    public class WorkHandler extends Handler {
-        public WorkHandler(@NonNull Looper looper) {
-            super(looper);
-        }
-
-        @Override
-        public void handleMessage(@NonNull Message msg) {
-            synchronized (mLock) {
-                switch (msg.what) {
-                    case MSG_SETUP_EGL:
-                        onSetupEGL((HardwareBuffer)msg.obj);
-                        break;
-                    case MSG_UPLOAD_FRAME:
-                        if (!mFrameAvailable) {
-                            Message.obtain(this, MSG_UPLOAD_FRAME).sendToTarget();
-                        } else {
-                            onUploadFrame();
-                        }
-                        break;
-                    case MSG_GET_FENCE:
-                        mFence = mSharedTexture.createFenceFd();
-                        break;
-                }
-                mMessageHandled = true;
-                mLock.notify();
-            }
-        }
-    }
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        return new DecoderBinder();
-    }
-
-    class DecoderBinder extends IDecoder2Service.Stub {
-
-        private int mFrameNum = 0;
-        @Override
-        public void init(AssetFileDescriptor afd) throws RemoteException {
-            mDecoder = new Decoder1(afd, null, null);
-        }
-
-
-
-        @Override
-        public void start(HardwareBuffer hwBuf) throws RemoteException {
-            synchronized (mLock) {
-                Message.obtain(mHandler, MSG_SETUP_EGL, hwBuf).sendToTarget();
-                while (!mMessageHandled) {
-                    try {
-                        mLock.wait();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-                mMessageHandled = false;
-            }
-            mDecoder.start();
-        }
-
-        @Override
-        public boolean decode() throws RemoteException {
-            mDecoder.decode();
-            boolean eos = mDecoder.isEOS();
-            try {
-                if (!eos) {
-                    synchronized (mLock) {
-                        Message.obtain(mHandler, MSG_UPLOAD_FRAME).sendToTarget();
-                        while (!mMessageHandled) {
-                            try {
-                                mLock.wait();
-                            } catch (InterruptedException e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-                        mMessageHandled = false;
-                    }
-                }
-            } catch (RuntimeException e) {
-                throw new RuntimeException(e);
-            } catch (Exception e) {
-                Log.e("BBB", e.toString());
-            }
-
-            return eos;
-        }
-
-        @Override
-        public int getHeight() throws RemoteException {
-            return mDecoder.getHeight();
-        }
-
-        @Override
-        public int getWidth() throws RemoteException {
-            return mDecoder.getWidth();
-        }
-
-        @Override
-        public void release() throws RemoteException {
-            mDecoder.release();
-        }
-
-        @Override
-        public ParcelFileDescriptor getFence(){
-            synchronized (mLock) {
-                Message.obtain(mHandler, MSG_GET_FENCE).sendToTarget();
-                while (!mMessageHandled) {
-                    try {
-                        mLock.wait();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-                mMessageHandled = false;
-            }
-            return mFence;
-        }
-    }
-
-    private void onUploadFrame() {
+    private void onUploadFrame(ParcelFileDescriptor fence) {
         if (!EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext)) {
             throw new RuntimeException();
+        }
+        if (fence != null) {
+            mSharedTexture.waitFenceFd(fence);
         }
         int[] size = new int[2];
         EGL14.eglQuerySurface(mEGLDisplay, mEGLSurface, EGL14.EGL_WIDTH, size, 0);
@@ -353,25 +336,6 @@ public class Decoder2Service extends Service {
         EGL14.eglSwapBuffers(mEGLDisplay, mEGLSurface);
 
         ByteBuffer pixels = ByteBuffer.allocateDirect(size[0] * size[1] * 4).order(ByteOrder.nativeOrder());
-                    /*GLES20.glReadPixels(0,0, size[0], size[1], GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixels);
-                    BufferedOutputStream bos = null;
-                    try {
-                        bos = new BufferedOutputStream(new FileOutputStream("sdcard/Download/decode_" + (mFrameNum++) + ".jpg"));
-                        Bitmap bmp = Bitmap.createBitmap(size[0], size[1], Bitmap.Config.ARGB_8888);
-                        bmp.copyPixelsFromBuffer(pixels);
-                        bmp.compress(Bitmap.CompressFormat.JPEG, 70, bos);
-                        bmp.recycle();
-                    } catch (FileNotFoundException e) {
-                        throw new RuntimeException(e);
-                    } finally {
-                        if (bos != null) {
-                            try {
-                                bos.close();
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-                    }*/
 
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_NONE);
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, GLES20.GL_NONE);

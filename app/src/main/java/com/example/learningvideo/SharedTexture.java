@@ -4,13 +4,15 @@ import android.hardware.HardwareBuffer;
 import android.os.ParcelFileDescriptor;
 
 public class SharedTexture {
+    public final static int AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM = 1;
+    public final static int AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420 = 35;
     private HardwareBuffer mHwBuffer = null;
     private long mNativeContext = 0;
     static {
         System.loadLibrary("learningvideo");
     }
-    public SharedTexture(int width, int height) {
-        mNativeContext = createNativeSharedTexture(width, height, 0);
+    public SharedTexture(int width, int height, int hwBufferFormat) {
+        mNativeContext = createNativeSharedTexture(width, height, hwBufferFormat);
         mHwBuffer = getHardwareBuffer(mNativeContext);
     }
 
@@ -38,8 +40,8 @@ public class SharedTexture {
 
     private native long createNativeSharedTexture2(HardwareBuffer buffer);
 
-    public void bindTexture(int frameTex) {
-        bindTexToHwBuffer(mNativeContext, frameTex);
+    public void bindTexture(int frameTex, int texType) {
+        bindTexToHwBuffer(mNativeContext, frameTex, texType);
     }
 
     public HardwareBuffer getHardwareBuffer() {
@@ -66,9 +68,20 @@ public class SharedTexture {
     private native int createFence();
 
     private native boolean waitFence(int fd);
-    private native long createNativeSharedTexture(int width, int height, int type);
+    private native long createNativeSharedTexture(int width, int height, int hwBufferFormat);
 
-    private native void bindTexToHwBuffer(long ctx, int frameTex);
+    private native void bindTexToHwBuffer(long ctx, int frameTex, int texType);
 
     private native HardwareBuffer getHardwareBuffer(long ctx);
+
+    public void updateFrame(byte[] data, ParcelFileDescriptor fence) {
+        if (fence != null) {
+            int fd = fence.detachFd();
+            if (fd != -1) {
+                updateFrame(mNativeContext, data, fd);
+            }
+        }
+    }
+
+    private native void updateFrame(long nativeContext, byte[] data, int fence);
 }

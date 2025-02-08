@@ -51,7 +51,8 @@ public class Renderer2 extends RendererBase {
     private int mTexPosLoc;
     private int mTexSamplerLoc;
     private EGLContext mEGLContext;
-    private SurfaceTexture mSurfaceTexture;
+    private SurfaceTexture mFrameSurfaceTexture;
+    int mFrameTextureType;
     private int mRenderFrame = 0;
     int mWidth = -1;
     int mHeight = -1;
@@ -84,6 +85,7 @@ public class Renderer2 extends RendererBase {
         super(context, handler);
         mContext = context;
         mHandler = handler;
+        mFrameTextureType = GLES11Ext.GL_TEXTURE_EXTERNAL_OES;
         mSurfaceView = new MySurfaceView(context);
         mSurfaceView.setEGLContextClientVersion(2);
         mSurfaceView.setRenderer(mSurfaceView);
@@ -92,6 +94,11 @@ public class Renderer2 extends RendererBase {
 
     public boolean isFrameAvailable() {
         return mIsFrameAvailable;
+    }
+
+    @Override
+    public int getFrameTextureType() {
+        return mFrameTextureType;
     }
 
     private volatile boolean mIsFrameAvailable = false;
@@ -153,12 +160,12 @@ public class Renderer2 extends RendererBase {
 
         int[] frameTex = new int[1];
         GLES20.glGenTextures(1, frameTex, 0);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, frameTex[0]);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_NONE);
+        GLES20.glBindTexture(mFrameTextureType, frameTex[0]);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(mFrameTextureType, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glBindTexture(mFrameTextureType, GLES20.GL_NONE);
 
         android.opengl.EGLConfig[] configs = new android.opengl.EGLConfig[1];
         int[] num_configs = new int[1];
@@ -169,11 +176,11 @@ public class Renderer2 extends RendererBase {
         mEGLDisplay = EGL14.eglGetCurrentDisplay();
         mEGLSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW);
         mEGLConfig = configs[0];
-        FilterBase doNothing = new DoNothingButUploadImage(null, mEGLContext, mEGLDisplay, mEGLConfig, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, width, height);
+        FilterBase doNothing = new DoNothingButUploadImage(null, mEGLContext, mEGLDisplay, mEGLConfig, mFrameTextureType, width, height);
         doNothing.addInputTexture(frameTex[0], GLES20.GL_RGBA,
                 (int tex, int slot, int samplerLoc) -> {
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);
-                    mSurfaceTexture.updateTexImage();
+                    mFrameSurfaceTexture.updateTexImage();
                     GLES20.glUniform1i(samplerLoc, slot);
                 });
         mFilterList.add(doNothing);
@@ -194,8 +201,8 @@ public class Renderer2 extends RendererBase {
 
         //EGL14.eglMakeCurrent(EGL14.eglGetCurrentDisplay(), s, EGL14.eglGetCurrentSurface(EGL14.EGL_READ), mEGLContext);
         mRenderTex = mFilterList.get(mFilterList.size()-1).getOutputTexture();
-        mSurfaceTexture = new SurfaceTexture(frameTex[0]);
-        mSurfaceTexture.setOnFrameAvailableListener((SurfaceTexture surfaceTexture)-> {mIsFrameAvailable = true;}, mHandler);
+        mFrameSurfaceTexture = new SurfaceTexture(frameTex[0]);
+        mFrameSurfaceTexture.setOnFrameAvailableListener((SurfaceTexture surfaceTexture)-> {mIsFrameAvailable = true;}, mHandler);
 
         String vertexShader =
                 "attribute vec2 pos;" +
@@ -242,7 +249,7 @@ public class Renderer2 extends RendererBase {
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
             while(mWidth < 0 || mHeight < 0);
             setup(mWidth, mHeight);
-            Message.obtain(mHandler, MSG_SURFACE_CREATED, new Surface(mSurfaceTexture)).sendToTarget();
+            Message.obtain(mHandler, MSG_SURFACE_CREATED, new Surface(mFrameSurfaceTexture)).sendToTarget();
         }
 
         @Override

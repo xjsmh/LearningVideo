@@ -1,16 +1,16 @@
-// IDecoder2Service.aidl
+// IDecoderService.aidl
 package com.example.learningvideo;
 
 // Declare any non-default types here with import statements
 
-interface IDecoder2Service {
+interface IDecoderService {
     /**
      * Demonstrates some basic types that you can use as parameters
      * and return values in AIDL.
      */
     void init(in AssetFileDescriptor afd);
     void start(in HardwareBuffer hwBuf);
-    boolean decode();
+    boolean decode(in ParcelFileDescriptor fence);
     int getHeight();
     int getWidth();
     void release();

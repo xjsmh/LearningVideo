@@ -15,15 +15,18 @@
 
 class SharedTexture {
 public:
-    SharedTexture(int width, int height, int type);
+    SharedTexture(int width, int height, int hwBufferFormat);
     SharedTexture(JNIEnv *env, jobject buffer);
     ~SharedTexture();
 
-    void bindTexToHwBuffer(int tex);
+    void bindTexToHwBuffer(int tex, int texType);
     jobject getHardWareBuffer(JNIEnv *env);
     static bool waitFence(int fenceFd);
     static int createFence();
     static bool isAvailable();
+
+    void updateFrame(unsigned char *data, int fence);
+
 private:
     AHardwareBuffer *mHardwareBuffer;
     EGLImageKHR mEGLImage = EGL_NO_IMAGE_KHR;

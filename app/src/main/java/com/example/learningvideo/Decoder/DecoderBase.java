@@ -1,5 +1,7 @@
 package com.example.learningvideo.Decoder;
 
+import android.media.MediaCodecInfo;
+
 public abstract class DecoderBase {
     public abstract boolean isEOS();
 
@@ -14,4 +16,5 @@ public abstract class DecoderBase {
     public abstract void decode();
 
     public abstract void release();
+
 }

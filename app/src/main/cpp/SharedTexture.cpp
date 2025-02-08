@@ -48,14 +48,14 @@ bool SharedTexture::isAvailable() {
     return AVAILABLE;
 }
 
-SharedTexture::SharedTexture(int width, int height, int type) :
+SharedTexture::SharedTexture(int width, int height, int hwBufferFormat) :
   mHardwareBuffer(nullptr), mTex(0), mWidth(width), mHeight(height)
 {
     AHardwareBuffer_Desc desc = {0};
     desc.width = width;
     desc.height = height;
     desc.layers = 1;
-    desc.format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
+    desc.format = hwBufferFormat;
     desc.usage = AHARDWAREBUFFER_USAGE_CPU_READ_NEVER | AHARDWAREBUFFER_USAGE_CPU_WRITE_NEVER |
                  AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_COLOR_OUTPUT;
     AHardwareBuffer_allocate(&desc, &mHardwareBuffer);
@@ -72,13 +72,13 @@ SharedTexture::~SharedTexture() {
     }
 }
 
-void SharedTexture::bindTexToHwBuffer(int tex) {
+void SharedTexture::bindTexToHwBuffer(int tex, int texType) {
     EGLClientBuffer clientBuffer = eglGetNativeClientBufferANDROID(mHardwareBuffer);
     EGLint attribs[] = {EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE};
     EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     mEGLImage = eglCreateImageKHR(display, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, clientBuffer, attribs);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, (GLeglImageOES)mEGLImage);
+    glBindTexture(texType, tex);
+    glEGLImageTargetTexture2DOES(texType, (GLeglImageOES)mEGLImage);
     mTex = tex;
 }
 
@@ -119,4 +119,43 @@ bool SharedTexture::waitFence(int fenceFd) {
     EGLint success = glext::eglWaitSyncKHR(display, syncKHR, 0);
     glext::eglDestroySyncKHR(display, syncKHR);
     return (success == EGL_TRUE);
+}
+
+void SharedTexture::updateFrame(unsigned char *data, int fence) {
+    AHardwareBuffer_Planes planes_info;
+    int result = AHardwareBuffer_lockPlanes(mHardwareBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, fence, nullptr, &planes_info);
+
+    if (result != 0) {
+        AHardwareBuffer_release(mHardwareBuffer);
+        LOGE("AHardwareBuffer_lockPlanes fail!");
+        return;
+    }
+    if (planes_info.planeCount != 3) {
+        AHardwareBuffer_release(mHardwareBuffer);
+        LOGE("planes_info.planeCount != 3 !");
+        return;
+    }
+    if (planes_info.planes[1].pixelStride != 2 || planes_info.planes[2].pixelStride != 2 ) {
+        AHardwareBuffer_release(mHardwareBuffer);
+        LOGE("u v plane pixel stride != 2 !");
+        return;
+    }
+    unsigned char *offset = data;
+
+    memcpy(planes_info.planes[0].data, offset, mWidth * mHeight);
+    offset += mWidth * mHeight;
+    uint8_t* uBufferPtr = reinterpret_cast<uint8_t*>(planes_info.planes[1].data);
+    uint8_t* vBufferPtr = reinterpret_cast<uint8_t*>(planes_info.planes[2].data);
+    for (int i = 0; i < mWidth * mHeight / 2; i += 2) {
+        *(uBufferPtr + i) = *(offset + i);
+        *(vBufferPtr + i) = *(offset + i + 1);
+    }
+
+    result = AHardwareBuffer_unlock(mHardwareBuffer, nullptr);
+
+    if (result != 0) {
+        AHardwareBuffer_release(mHardwareBuffer);
+        LOGE("AHardwareBuffer_unlock fail!");
+        return;
+    }
 }

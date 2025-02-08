@@ -13,7 +13,7 @@
         android:theme="@style/Theme.LearningVideo"
         tools:targetApi="31">
         <service
-            android:name=".Decoder.Decoder2Service"
+            android:name=".Decoder.DecoderService"
             android:enabled="true"
             android:exported="false"
             android:process=":decode_service"></service>

@@ -31,9 +31,25 @@ public class Decoder1 extends DecoderBase {
     private Surface mSurface = null;
     private boolean mIsEOS;
 
+    private int mWantedOutputFormat = MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar;
+    private boolean mIsNeedSaveYuvByteArray = false;
+    private byte[] mYuvByteArray;
+
+    public void setNeedSaveYuvByteArray(boolean needSaveYuvByteArray) {
+        mIsNeedSaveYuvByteArray = needSaveYuvByteArray;
+    }
+
     @Override
     public boolean isEOS() {
         return mIsEOS;
+    }
+
+    public byte[] getYuvByteArray() {
+        return mYuvByteArray;
+    }
+
+    public void setWantedOutputFormat(int wantedOutputFormat) {
+        mWantedOutputFormat = wantedOutputFormat;
     }
 
     @Override
@@ -82,7 +98,10 @@ public class Decoder1 extends DecoderBase {
 
     @Override
     public void start() {
-        mSrcFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar);
+        if (mIsNeedSaveYuvByteArray) {
+            mYuvByteArray = new byte[mWidth * mHeight * 3 / 2];
+        }
+        mSrcFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, mWantedOutputFormat);
         mDecoder.configure(mSrcFormat, mSurface, null, 0);
         mDecoder.start();
     }
@@ -119,6 +138,9 @@ public class Decoder1 extends DecoderBase {
                     if (mYUVData != null) {
                         if (mHandler != null)
                             Message.obtain(mHandler,MSG_ACTION_COMPLETED, mWidth, mHeight, mYUVData).sendToTarget();
+                        if (mIsNeedSaveYuvByteArray) {
+                            mYUVData.get(mYuvByteArray, 0, mYuvByteArray.length);
+                        }
                         gotOutput = true;
                     }
                     mDecoder.releaseOutputBuffer(idx, false);
@@ -133,7 +155,7 @@ public class Decoder1 extends DecoderBase {
                 mHeight = fmt.getInteger(MediaFormat.KEY_HEIGHT);
                 mWidth = fmt.getInteger(MediaFormat.KEY_WIDTH);
                 int color_format = fmt.getInteger(MediaFormat.KEY_COLOR_FORMAT);
-                assert color_format == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar;
+                assert color_format == mWantedOutputFormat;
             }
         }
     }

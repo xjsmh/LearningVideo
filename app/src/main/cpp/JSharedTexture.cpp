@@ -21,8 +21,8 @@
 
 class JSharedTexture {
 public:
-    JSharedTexture(int width, int height, int type) :
-        mTexture(new SharedTexture(width, height, type)) {}
+    JSharedTexture(int width, int height, int hwBufferFormat) :
+        mTexture(new SharedTexture(width, height, hwBufferFormat)) {}
 
     JSharedTexture(JNIEnv *pEnv, jobject pJobject) :
             mTexture(new SharedTexture(pEnv, pJobject)) {}
@@ -37,10 +37,10 @@ public:
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_example_learningvideo_SharedTexture_bindTexToHwBuffer(JNIEnv *env, jobject thiz,
-                                                               jlong ctx, jint frame_tex) {
+                                                               jlong ctx, jint frame_tex, jint tex_type) {
     if(!ctx) return;
     JSharedTexture *_ctx = reinterpret_cast<JSharedTexture*>(ctx);
-    _ctx->mTexture->bindTexToHwBuffer(frame_tex);
+    _ctx->mTexture->bindTexToHwBuffer(frame_tex, tex_type);
 }
 extern "C"
 JNIEXPORT jobject JNICALL
@@ -52,8 +52,8 @@ Java_com_example_learningvideo_SharedTexture_getHardwareBuffer(JNIEnv *env, jobj
 
 extern "C"
 JNIEXPORT jlong JNICALL
-Java_com_example_learningvideo_SharedTexture_createNativeSharedTexture(JNIEnv *env, jobject thiz, jint width, jint height, jint type) {
-    JSharedTexture *ctx = new JSharedTexture(width, height, type);
+Java_com_example_learningvideo_SharedTexture_createNativeSharedTexture(JNIEnv *env, jobject thiz, jint width, jint height, jint hwBufferFormat) {
+    JSharedTexture *ctx = new JSharedTexture(width, height, hwBufferFormat);
     jlong ret = reinterpret_cast<jlong>(ctx);
     return ret;
 }
@@ -89,4 +89,20 @@ Java_com_example_learningvideo_SharedTexture_finalize(JNIEnv *env, jobject thiz,
     }
     auto *_ctx = reinterpret_cast<JSharedTexture *>(native_context);
     delete _ctx;
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_example_learningvideo_SharedTexture_updateFrame(JNIEnv *env, jobject thiz,
+                                                         jlong native_context, jbyteArray data, jint fence) {
+    if (native_context == 0) {
+        return;
+    }
+    auto *_ctx = reinterpret_cast<JSharedTexture *>(native_context);
+    auto *pBuffer = reinterpret_cast<unsigned char *>(env->GetByteArrayElements(data,
+                                                                                         nullptr));
+    if (!pBuffer) {
+        return;
+    }
+    _ctx->mTexture->updateFrame(pBuffer, fence);
+    (*env).ReleaseByteArrayElements(data, reinterpret_cast<jbyte *>(pBuffer), 0);
 }
