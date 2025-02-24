@@ -1,17 +1,19 @@
 package com.example.learningvideo.Decoder;
 
-import android.media.MediaCodecInfo;
+import android.content.res.AssetFileDescriptor;
+import android.os.Handler;
 
 public abstract class DecoderBase {
-    public abstract boolean isEOS();
+    public DecoderBase(AssetFileDescriptor afd, Handler workHandler) {
+    }
 
-    public abstract void setObject(Object obj);
+    public abstract boolean isEOS();
 
     public abstract int getHeight();
 
     public abstract int getWidth();
 
-    public abstract void start();
+    public abstract void start(Object obj);
 
     public abstract void decode();
 

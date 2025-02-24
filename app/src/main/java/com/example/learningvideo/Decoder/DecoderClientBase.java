@@ -1,6 +1,6 @@
 package com.example.learningvideo.Decoder;
 
-import static com.example.learningvideo.Core.MSG_ACTION_COMPLETED;
+import static com.example.learningvideo.Core.MSG_NEXT_ACTION;
 import static com.example.learningvideo.Core.MSG_DONE;
 
 import android.content.ComponentName;
@@ -9,32 +9,30 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.res.AssetFileDescriptor;
 import android.opengl.EGL14;
-import android.opengl.EGLContext;
-import android.opengl.EGLDisplay;
-import android.opengl.EGLSurface;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.RemoteException;
+import android.util.Log;
 
+import com.example.learningvideo.Core;
+import com.example.learningvideo.GLES.EGLCore;
 import com.example.learningvideo.IDecoderService;
 import com.example.learningvideo.SharedTexture;
 
 public abstract class DecoderClientBase extends DecoderBase{
-    private final Handler mHandler;
+    private Handler mHandler;
     private final AssetFileDescriptor mAfd;
-    private final Context mContext;
     ServiceConnection mServiceConnection;
     volatile IDecoderService mService;
-    private EGLContext mEGLContext;
-    private EGLDisplay mEGLDisplay;
-    private EGLSurface mEGLSurface;
     private int mTexture;
     private SharedTexture mSharedTexture;
+    private boolean mIsStarted;
 
     public abstract int getHwBufferFormat();
 
-    public DecoderClientBase(AssetFileDescriptor afd, Handler handler, Context ctx) {
+    public DecoderClientBase(AssetFileDescriptor afd, Handler handler) {
+        super(afd, handler);
         if(!SharedTexture.isAvailable()) {
             throw new RuntimeException();
         }
@@ -48,13 +46,13 @@ public abstract class DecoderClientBase extends DecoderBase{
 
             @Override
             public void onServiceDisconnected(ComponentName name) {
-
             }
         };
-        Intent intent = new Intent(ctx, DecoderService.class);
+        Context ctx = Core.getInstance().getContextRef().get();
+        if(ctx == null) throw new RuntimeException();
+        Intent intent = new Intent(ctx.getApplicationContext(), DecoderService.class);
         intent.putExtra("format", getHwBufferFormat());
-        ctx.bindService(intent, mServiceConnection, Context.BIND_AUTO_CREATE|Context.BIND_IMPORTANT);
-        mContext = ctx;
+        ctx.getApplicationContext().bindService(intent, mServiceConnection, Context.BIND_AUTO_CREATE|Context.BIND_IMPORTANT);
         while(mService == null);
         try {
             mService.init(mAfd);
@@ -65,19 +63,9 @@ public abstract class DecoderClientBase extends DecoderBase{
     private void setupEGL() {
         int width = getWidth();
         int height = getHeight();
-        mEGLContext = EGL14.eglGetCurrentContext();
-        if (mEGLContext == EGL14.EGL_NO_CONTEXT) {
-            throw new RuntimeException();
-        }
-        mEGLDisplay = EGL14.eglGetCurrentDisplay();
-        if (mEGLDisplay == EGL14.EGL_NO_DISPLAY) {
-            throw new RuntimeException();
-        }
-        mEGLSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW);
-        if (mEGLSurface == EGL14.EGL_NO_SURFACE) {
-            throw new RuntimeException();
-        }
-        if(!EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext)) {
+        android.opengl.EGLConfig[] configs = new android.opengl.EGLConfig[1];
+        int[] num_configs = new int[1];
+        if(!EGL14.eglGetConfigs(EGL14.eglGetCurrentDisplay(), configs, 0, 1, num_configs, 0)) {
             throw new RuntimeException();
         }
         mSharedTexture = new SharedTexture(width, height, getHwBufferFormat());
@@ -87,10 +75,18 @@ public abstract class DecoderClientBase extends DecoderBase{
     public abstract int getTextureType();
 
     @Override
-    public void start() {
+    public void start(Object obj) {
         try {
-            setupEGL();
-            mService.start(mSharedTexture.getHardwareBuffer());
+            if (obj instanceof Integer) {
+                mTexture = (int)obj;
+            }
+            if (!mIsStarted) {
+                setupEGL();
+                mService.start(mSharedTexture.getHardwareBuffer());
+                mIsStarted = true;
+            } else {
+                mSharedTexture.bindTexture(mTexture, getTextureType());
+            }
         } catch (RemoteException e) {
             throw new RuntimeException(e);
         }
@@ -102,7 +98,7 @@ public abstract class DecoderClientBase extends DecoderBase{
             boolean eos = mService.decode(mSharedTexture.createFenceFd());
             if (!eos) {
                 waitFence();
-                Message.obtain(mHandler,MSG_ACTION_COMPLETED, mService.getWidth(), mService.getHeight()).sendToTarget();
+                Message.obtain(mHandler, MSG_NEXT_ACTION, mService.getWidth(), mService.getHeight()).sendToTarget();
             } else {
                 Message.obtain(mHandler, MSG_DONE).sendToTarget();
             }
@@ -141,12 +137,15 @@ public abstract class DecoderClientBase extends DecoderBase{
 
     @Override
     public void release() {
+        mSharedTexture = null;
         try {
             mService.release();
         } catch (RemoteException e) {
             throw new RuntimeException(e);
         }
-        mContext.unbindService(mServiceConnection);
+        Context ctx = Core.getInstance().getContextRef().get();
+        if(ctx == null) throw new RuntimeException();
+        ctx.getApplicationContext().unbindService(mServiceConnection);
     }
 
     @Override
@@ -160,9 +159,4 @@ public abstract class DecoderClientBase extends DecoderBase{
         return eos;
     }
 
-    public void setObject(Object obj) {
-        if (obj instanceof Integer) {
-            mTexture = (int)obj;
-        }
-    }
 }

@@ -1,6 +1,6 @@
 package com.example.learningvideo;
 
-import static com.example.learningvideo.Core.MSG_ACTION_COMPLETED;
+import static com.example.learningvideo.Core.MSG_NEXT_ACTION;
 
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
@@ -8,15 +8,14 @@ import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
 import android.opengl.EGL14;
-import android.opengl.EGLConfig;
 import android.opengl.EGLContext;
-import android.opengl.EGLDisplay;
-import android.opengl.EGLExt;
 import android.opengl.EGLSurface;
 import android.opengl.GLES20;
 import android.os.Handler;
 import android.util.Log;
 import android.view.Surface;
+
+import com.example.learningvideo.GLES.EGLCore;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -34,19 +33,30 @@ public class Encoder {
     private int mFrameRate = 30;
     private int mBitrate = 36000000;
     private int mIFrameInterval = 1;
-    private String mPath = "sdcard/Download/out.mp4";
-    private EGLResources mEGLResources;
+    private String mPath = "sdcard/Download/out1.mp4";
     private int mTrackID;
     private int mFrameCount = 0;
+    EGLCore mEGLCore;
+    EGLContext mSharedEGLContext = EGL14.EGL_NO_CONTEXT;
+    IDrawable mBufferProvider;
+    private long mGLThreadId;
+    private boolean mIsStarted = false;
 
 
     public Encoder(Handler handler) {
         mHandler = handler;
     }
 
-    public void start(EGLResources resources) {
-        setupEncoder();
-        setupEGL(resources);
+    public void start(EGLCore eglCore, IDrawable bufferProvider) {
+        if (mSharedEGLContext != eglCore.getEGLContext()) {
+            if (mEncoder == null)
+                setupEncoder();
+            setupEGL(eglCore);
+            mBufferProvider = bufferProvider;
+        } else {
+            mEGLCore.setWindowSurface(mInputSurface);
+        }
+
     }
 
     private void setupEncoder() {
@@ -73,77 +83,21 @@ public class Encoder {
         }
     }
 
-    private void setupEGL(EGLResources resource) {
-        EGLConfig config = resource.getEGLConfig();
-        EGLDisplay display = resource.getEGLDisplay();
-        EGLContext context = resource.getEGLContext();
-        if(resource.isNeedShared()) {
-            display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
-            if (display == EGL14.EGL_NO_DISPLAY) {
-                throw new RuntimeException();
-            }
-            int[] version = new int[2];
-            if(!EGL14.eglInitialize(display, version, 0, version, 1)) {
-                throw new RuntimeException();
-            }
-            int[] attribs = {
-                    EGL14.EGL_RED_SIZE, 8,
-                    EGL14.EGL_GREEN_SIZE, 8,
-                    EGL14.EGL_BLUE_SIZE, 8,
-                    EGL14.EGL_ALPHA_SIZE,8,
-                    EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
-                    EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                    EGL14.EGL_NONE
-            };
-            EGLConfig[] configs = new EGLConfig[1];
-            int[] num_configs = new int[1];
-            if(!EGL14.eglChooseConfig(display, attribs, 0, configs,0,1,num_configs,0)) {
-                throw new RuntimeException();
-            }
-            config = configs[0];
-            int[] attribs_ctx = {
-                    EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
-                    EGL14.EGL_NONE
-            };
-            context = EGL14.eglCreateContext(display, config, resource.getEGLContext(), attribs_ctx, 0);
-            if (context == EGL14.EGL_NO_CONTEXT) {
-                throw new RuntimeException();
-            }
-        }
-        mEGLSurface = EGL14.eglCreateWindowSurface(display, config, mInputSurface, new int[]{EGL14.EGL_NONE}, 0);
-        if (mEGLSurface == EGL14.EGL_NO_SURFACE) {
-            throw new RuntimeException();
-        }
-        if(!EGL14.eglMakeCurrent(display, mEGLSurface, mEGLSurface, context)) {
-            throw new RuntimeException();
-        }
-        GLES20.glClearColor(0, 0, 0, 1);
-        mEGLResources = resource;
-        mEGLResources.setEGLConfig(config);
-        mEGLResources.setEGLDisplay(display);
-        mEGLResources.setEGLContext(context);
+    private void setupEGL(EGLCore eglCore) {
+        mGLThreadId = Thread.currentThread().getId();
+        mEGLCore = mGLThreadId != eglCore.getGLThreadId() ? new EGLCore(eglCore.getEGLContext()) : new EGLCore(eglCore);
+        mEGLCore.setWindowSurface(mInputSurface);
+        mSharedEGLContext = eglCore.getEGLContext();
     }
 
     public void encode() {
-        EGL14.eglMakeCurrent(mEGLResources.getEGLDisplay(), mEGLSurface, mEGLSurface, mEGLResources.getEGLContext());
+        mEGLCore.makeCurrent();
         GLES20.glViewport(0, 0, mWidth, mHeight);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-        GLES20.glUseProgram(mEGLResources.getProgram());
-        EGLResources.VertexAttrib posAttrib = mEGLResources.getPosAttrib();
-        GLES20.glVertexAttribPointer(posAttrib.getLoc(), posAttrib.getSize(), posAttrib.getType(), false, posAttrib.getStride(), posAttrib.getBuffer());
-        GLES20.glEnableVertexAttribArray(posAttrib.getLoc());
-        EGLResources.VertexAttrib texPosAttrib = mEGLResources.getTexPosAttrib();
-        GLES20.glVertexAttribPointer(texPosAttrib.getLoc(), texPosAttrib.getSize(), texPosAttrib.getType(), false, texPosAttrib.getStride(), texPosAttrib.getBuffer());
-        GLES20.glEnableVertexAttribArray(texPosAttrib.getLoc());
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(mEGLResources.getTextureType(), mEGLResources.getTexture());
-        EGLResources.ElementAttrib drawOrdersAttrib = mEGLResources.getDrawOrdersAttrib();
-        GLES20.glDrawElements(GLES20.GL_TRIANGLE_STRIP, drawOrdersAttrib.getCount(), drawOrdersAttrib.getType(), drawOrdersAttrib.getBuffer());
-        EGLExt.eglPresentationTimeANDROID(mEGLResources.getEGLDisplay(), mEGLSurface, (mFrameCount++) * 1000000000L / mFrameRate);
-        EGL14.eglSwapBuffers(mEGLResources.getEGLDisplay(), mEGLSurface);
-        GLES20.glBindTexture(mEGLResources.getTextureType(), GLES20.GL_NONE);
-        GLES20.glDisableVertexAttribArray(posAttrib.getLoc());
-        GLES20.glDisableVertexAttribArray(texPosAttrib.getLoc());
+        mBufferProvider.draw();
+        mEGLCore.presentationTime((mFrameCount++) * 1000000000L / mFrameRate);
+        mEGLCore.swapBuffer();
+
         //GLES20.glFinish();
         Log.e(TAG, "encode " + mEncodeFrame++);
 
@@ -172,7 +126,7 @@ public class Encoder {
                 gotOutput = false;
             }
         }while(gotOutput);
-        mHandler.sendEmptyMessage(MSG_ACTION_COMPLETED);
+        mHandler.sendEmptyMessage(MSG_NEXT_ACTION);
     }
 
     public void release() {
@@ -196,5 +150,13 @@ public class Encoder {
         mEncoder.release();
         mMuxer.stop();
         mMuxer.release();
+        mEGLCore.release();
+        mInputSurface.release();
+        mInputSurface = null;
+    }
+
+    public void pause() {
+        mEGLCore.makeCurrent();
+        mEGLCore.destroySurface();
     }
 }

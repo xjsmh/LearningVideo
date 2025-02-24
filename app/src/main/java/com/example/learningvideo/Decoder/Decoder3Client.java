@@ -8,8 +8,10 @@ import android.opengl.GLES11Ext;
 import android.os.Handler;
 
 public class Decoder3Client extends DecoderClientBase {
-    public Decoder3Client(AssetFileDescriptor afd, Handler handler, Context ctx) {
-        super(afd, handler, ctx);
+
+
+    public Decoder3Client(AssetFileDescriptor afd, Handler handler) {
+        super(afd, handler);
     }
 
     @Override

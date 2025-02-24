@@ -1,23 +1,30 @@
 package com.example.learningvideo;
 
+import android.app.Activity;
+import android.app.Application;
 import android.os.Bundle;
-import android.view.SurfaceView;
 
-import androidx.activity.EdgeToEdge;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
-
-public class MainActivity extends AppCompatActivity {
-
+public class MainActivity extends Activity {
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Core.getInstance().start();
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
-        Core core = new Core(getResources().openRawResourceFd(R.raw.big_buck_bunny_720p_10mb), this);
-        core.start();
-        setContentView(core.getSurfaceView());
+        setContentView(R.layout.activity_main);
+        Core.getInstance().init(getResources().openRawResourceFd(R.raw.big_buck_bunny_720p_10mb), this);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (isFinishing()) {
+            Core.getInstance().stop();
+        } else {
+            Core.getInstance().pause();
+        }
     }
 }

@@ -10,8 +10,9 @@ import android.os.RemoteException;
 import com.example.learningvideo.SharedTexture;
 
 public class Decoder2Client extends DecoderClientBase {
-    public Decoder2Client(AssetFileDescriptor afd, Handler handler, Context ctx) {
-        super(afd, handler, ctx);
+
+    public Decoder2Client(AssetFileDescriptor afd, Handler handler) {
+        super(afd, handler);
     }
 
     @Override

@@ -5,17 +5,26 @@ import android.os.Handler;
 import android.os.Message;
 import android.view.View;
 
-import com.example.learningvideo.EGLResources;
+import com.example.learningvideo.GLES.EGLCore;
+import com.example.learningvideo.IDrawable;
 
-public abstract class RendererBase {
-    public RendererBase(Context context, Handler handler){}
-    public abstract void start(int width, int height);
+public abstract class RendererBase implements IDrawable {
+    public RendererBase(Handler handler){}
     public abstract void render(Message msg);
     public abstract void release();
-    public abstract View getView();
+    public int getViewId() {return -1;}
     public abstract void setup(int width, int height);
-    public abstract EGLResources getEGLResource();
+    public abstract EGLCore getEGLCore();
     public abstract boolean isFrameAvailable();
     public void setFrameTextureType(int texture) { }
     public abstract int getFrameTextureType();
+
+    public abstract boolean readyToDraw();
+
+    public Object getInputSurface() {
+        return null;
+    }
+
+    public void init(Context context) {
+    }
 }

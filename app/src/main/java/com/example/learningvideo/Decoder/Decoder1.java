@@ -1,9 +1,8 @@
 package com.example.learningvideo.Decoder;
 
-import static com.example.learningvideo.Core.MSG_ACTION_COMPLETED;
+import static com.example.learningvideo.Core.MSG_NEXT_ACTION;
 import static com.example.learningvideo.Core.MSG_DONE;
 
-import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
@@ -34,6 +33,7 @@ public class Decoder1 extends DecoderBase {
     private int mWantedOutputFormat = MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar;
     private boolean mIsNeedSaveYuvByteArray = false;
     private byte[] mYuvByteArray;
+    private boolean mIsStarted;
 
     public void setNeedSaveYuvByteArray(boolean needSaveYuvByteArray) {
         mIsNeedSaveYuvByteArray = needSaveYuvByteArray;
@@ -52,13 +52,8 @@ public class Decoder1 extends DecoderBase {
         mWantedOutputFormat = wantedOutputFormat;
     }
 
-    @Override
-    public void setObject(Object obj) {
-        if (obj instanceof Surface)
-            this.mSurface = (Surface)obj;
-    }
-
-    public Decoder1(AssetFileDescriptor afd, Handler workHandler, Context ctx) {
+    public Decoder1(AssetFileDescriptor afd, Handler workHandler) {
+        super(afd, workHandler);
         mHandler = workHandler;
         mDeMuxer = new MediaExtractor();
         try {
@@ -97,17 +92,26 @@ public class Decoder1 extends DecoderBase {
     }
 
     @Override
-    public void start() {
-        if (mIsNeedSaveYuvByteArray) {
-            mYuvByteArray = new byte[mWidth * mHeight * 3 / 2];
+    public void start(Object obj) {
+        if (obj instanceof Surface) mSurface = (Surface)obj;
+        if (mIsStarted) {
+            if (obj != null) {
+                mDecoder.setOutputSurface(mSurface);
+            }
+        } else {
+            if (mIsNeedSaveYuvByteArray) {
+                mYuvByteArray = new byte[mWidth * mHeight * 3 / 2];
+            }
+            mSrcFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, mWantedOutputFormat);
+            mDecoder.configure(mSrcFormat, mSurface, null, 0);
+            mDecoder.start();
+            mIsStarted = true;
         }
-        mSrcFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, mWantedOutputFormat);
-        mDecoder.configure(mSrcFormat, mSurface, null, 0);
-        mDecoder.start();
     }
 
     @Override
     public void decode() {
+        if (mIsEOS) return;
         boolean gotOutput = false;
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         while(!gotOutput) {
@@ -127,8 +131,12 @@ public class Decoder1 extends DecoderBase {
             idx = mDecoder.dequeueOutputBuffer(info, 1000);
             if (idx > 0) {
                 if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) > 0) {
-                    if (mHandler != null)
+                    if (mHandler != null) {
                         Message.obtain(mHandler, MSG_DONE).sendToTarget();
+                        //mDeMuxer.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                        //mDecoder.flush();
+                        //Message.obtain(mHandler, MSG_NEXT_ACTION, mWidth, mHeight, mYUVData).sendToTarget();
+                    }
                     mIsEOS = true;
                     break;
                 }
@@ -137,7 +145,7 @@ public class Decoder1 extends DecoderBase {
                     mYUVData = mDecoder.getOutputBuffer(idx);
                     if (mYUVData != null) {
                         if (mHandler != null)
-                            Message.obtain(mHandler,MSG_ACTION_COMPLETED, mWidth, mHeight, mYUVData).sendToTarget();
+                            Message.obtain(mHandler, MSG_NEXT_ACTION, mWidth, mHeight, mYUVData).sendToTarget();
                         if (mIsNeedSaveYuvByteArray) {
                             mYUVData.get(mYuvByteArray, 0, mYuvByteArray.length);
                         }
@@ -148,7 +156,7 @@ public class Decoder1 extends DecoderBase {
                     gotOutput = true;
                     mDecoder.releaseOutputBuffer(idx, true);
                     if (mHandler != null)
-                        Message.obtain(mHandler,MSG_ACTION_COMPLETED, mWidth, mHeight).sendToTarget();
+                        Message.obtain(mHandler, MSG_NEXT_ACTION, mWidth, mHeight).sendToTarget();
                 }
             } else if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 MediaFormat fmt = mDecoder.getOutputFormat();
@@ -165,5 +173,7 @@ public class Decoder1 extends DecoderBase {
         mDeMuxer.release();
         mDecoder.stop();
         mDecoder.release();
+        mIsStarted = false;
     }
+
 }

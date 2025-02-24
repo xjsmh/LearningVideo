@@ -15,14 +15,14 @@ public class Decoder3 extends IDecoderService.Stub{
 
     @Override
     public void init(AssetFileDescriptor afd) throws RemoteException {
-        mDecoder = new Decoder1(afd, null, null);
+        mDecoder = new Decoder1(afd, null);
     }
 
     @Override
     public void start(HardwareBuffer hwBuf) throws RemoteException {
         mSharedTexture = new SharedTexture(hwBuf);
         mDecoder.setNeedSaveYuvByteArray(true);
-        mDecoder.start();
+        mDecoder.start(null);
     }
 
     @Override
@@ -48,6 +48,7 @@ public class Decoder3 extends IDecoderService.Stub{
     @Override
     public void release() throws RemoteException {
         mDecoder.release();
+        mSharedTexture = null;
     }
 
     @Override

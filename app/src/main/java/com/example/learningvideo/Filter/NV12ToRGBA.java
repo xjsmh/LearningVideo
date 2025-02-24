@@ -1,13 +1,9 @@
 package com.example.learningvideo.Filter;
 
-import android.opengl.EGL14;
-import android.opengl.EGLConfig;
-import android.opengl.EGLContext;
-import android.opengl.EGLDisplay;
-import android.opengl.EGLSurface;
 import android.opengl.GLES20;
 
-import com.example.learningvideo.EGLResources;
+import com.example.learningvideo.GLES.EGLCore;
+import com.example.learningvideo.GLES.Utils;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -20,9 +16,13 @@ public class NV12ToRGBA extends FilterBase {
     private final int mFBO;
     private final int mProgram;
     private final ArrayList<Integer> mTexSamplerLocList = new ArrayList<>();
-    private final EGLSurface mEGLSurface;
     private final int mPosLoc;
     private final int mTexPosLoc;
+
+    @Override
+    public int getFBO() {
+        return mFBO;
+    }
 
     static {
         float[] vertices = {
@@ -41,39 +41,18 @@ public class NV12ToRGBA extends FilterBase {
         sDrawOrders.put(orders).position(0);
     }
 
-    public NV12ToRGBA(FilterBase lastFilter, EGLContext context, EGLDisplay display, EGLConfig config, int inTexType, int width, int height) {
-        super(lastFilter, context, display, config, inTexType, width, height);
-        int[] attrib_list = {
-                EGL14.EGL_WIDTH, width,
-                EGL14.EGL_HEIGHT, height,
-                EGL14.EGL_NONE
-        };
-        mEGLSurface = EGL14.eglCreatePbufferSurface(display, config, attrib_list, 0);
-        if (mEGLSurface == EGL14.EGL_NO_SURFACE) {
-            throw new RuntimeException();
-        }
+    public NV12ToRGBA(FilterBase lastFilter, int width, int height) {
+        this(lastFilter.getEGLCore(), lastFilter.getOutTextureType(), width, height);
+        mLastFilter = lastFilter;
+    }
 
-        int[] tex = new int[1];
-        GLES20.glGenTextures(1, tex, 0);
-        mOutputTexture = tex[0];
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mOutputTexture);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_NEAREST);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_NEAREST);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,  GLES20.GL_NONE);
+    public NV12ToRGBA(EGLCore eglCore, int inTexType, int width, int height) {
+        super(eglCore, inTexType, width, height);
+        mEGLCore = new EGLCore(eglCore);
+        mEGLCore.setPbufferSurface(width, height);
         mOutTextureType = GLES20.GL_TEXTURE_2D;
-
-        int[] FBO = new int[1];
-        GLES20.glGenFramebuffers(1, FBO, 0);
-        mFBO = FBO[0];
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,  mFBO);
-        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, mOutputTexture, 0);
-        if (GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) != GLES20.GL_FRAMEBUFFER_COMPLETE) {
-            throw new RuntimeException();
-        }
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,  GLES20.GL_NONE);
+        mOutputTexture = Utils.genTexture(mOutTextureType, null, width, height, GLES20.GL_RGBA);
+        mFBO = Utils.genFrameBuffer(GLES20.GL_COLOR_ATTACHMENT0, mOutTextureType, mOutputTexture);
 
         String vertexShader =
                 "attribute vec2 pos;" +
@@ -83,9 +62,6 @@ public class NV12ToRGBA extends FilterBase {
                 "    gl_Position = vec4(pos, 0, 1);" +
                 "    outTexPos = texPos;" +
                 "}";
-        int v = GLES20.glCreateShader(GLES20.GL_VERTEX_SHADER);
-        GLES20.glShaderSource(v, vertexShader);
-        GLES20.glCompileShader(v);
 
         String samplerType = (inTexType == GLES20.GL_TEXTURE_2D) ? "sampler2D" : "samplerExternalOES";
         String fragmentShader =
@@ -100,34 +76,14 @@ public class NV12ToRGBA extends FilterBase {
                 "    float b = texture2D(Y_Sampler, outTexPos).r + 1.772 * (texture2D(UV_Sampler, outTexPos).r - 0.5);" +
                 "    gl_FragColor = vec4(r, g, b, 1);" +
                 "}";
-        int f = GLES20.glCreateShader(GLES20.GL_FRAGMENT_SHADER);
-        GLES20.glShaderSource(f, fragmentShader);
-        GLES20.glCompileShader(f);
 
-        mProgram = GLES20.glCreateProgram();
-        GLES20.glAttachShader(mProgram, v);
-        GLES20.glAttachShader(mProgram, f);
-        GLES20.glLinkProgram(mProgram);
-        GLES20.glDeleteShader(v);
-        GLES20.glDeleteShader(f);
+        mProgram = Utils.createProgram(vertexShader, fragmentShader);
 
         GLES20.glUseProgram(mProgram);
         mPosLoc = GLES20.glGetAttribLocation(mProgram, "pos");
         mTexPosLoc = GLES20.glGetAttribLocation(mProgram, "texPos");
         mTexSamplerLocList.add(GLES20.glGetUniformLocation(mProgram, "Y_Sampler"));
         mTexSamplerLocList.add(GLES20.glGetUniformLocation(mProgram, "UV_Sampler"));
-
-        mLastFilter = lastFilter;
-        mEGLResources = new EGLResources(false)
-                .setEGLContext(context)
-                .setEGLDisplay(display)
-                .setEGLConfig(config)
-                .setProgram(mProgram)
-                .setPosAttrib(new EGLResources.VertexAttrib(2, mPosLoc, GLES20.GL_FLOAT, 16, sVertices, 0))
-                .setTexPosAttrib(new EGLResources.VertexAttrib(2, mTexPosLoc, GLES20.GL_FLOAT, 16, sVertices, 2))
-                .setDrawOrdersAttrib(new EGLResources.ElementAttrib(6, GLES20.GL_UNSIGNED_BYTE, sDrawOrders, 0))
-                .setTextureType(getOutTextureType())
-                .setTexture(getOutputTexture());
 
     }
 
@@ -144,20 +100,12 @@ public class NV12ToRGBA extends FilterBase {
     }
 
     @Override
-    public void process(EGLContext context, EGLDisplay display, EGLSurface surface) {
-        EGLSurface readS = EGL14.eglGetCurrentSurface(EGL14.EGL_READ);
-        if(display ==EGL14.EGL_NO_DISPLAY) {
-            throw new RuntimeException();
-        }
-        if(context == EGL14.EGL_NO_CONTEXT) {
-            throw new RuntimeException();
-        }
-        EGL14.eglMakeCurrent(display, mEGLSurface, mEGLSurface, EGL14.eglGetCurrentContext());
+    public void process() {
+        mEGLCore.makeCurrent();
         //EGL14.eglMakeCurrent(display, mEGLSurface, mEGLSurface, context);
         GLES20.glUseProgram(mProgram);
-        int[] size = new int[2];
-        EGL14.eglQuerySurface(display, mEGLSurface, EGL14.EGL_WIDTH, size, 0);
-        EGL14.eglQuerySurface(display, mEGLSurface, EGL14.EGL_HEIGHT, size, 1);
+        int[] size = mEGLCore.getSurfaceSize();
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         GLES20.glViewport(0,0, size[0], size[1]);
         GLES20.glVertexAttribPointer(mPosLoc, 2, GLES20.GL_FLOAT, false, 16, sVertices.position(0));
         GLES20.glEnableVertexAttribArray(mPosLoc);
@@ -170,11 +118,21 @@ public class NV12ToRGBA extends FilterBase {
 
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, mFBO);
         GLES20.glDrawElements(GLES20.GL_TRIANGLE_STRIP, 6, GLES20.GL_UNSIGNED_BYTE, sDrawOrders.position(0));
-        EGL14.eglSwapBuffers(display, mEGLSurface);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, GLES20.GL_NONE);
+        mEGLCore.swapBuffer();
+        //GLES20.glBindTexture(mInTexType, GLES20.GL_NONE);
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, GLES20.GL_NONE);
         GLES20.glDisableVertexAttribArray(mPosLoc);
         GLES20.glDisableVertexAttribArray(mTexPosLoc);
-        EGL14.eglMakeCurrent(display, surface, readS, context);
+    }
+
+    @Override
+    public void release() {
+        GLES20.glDeleteProgram(mProgram);
+        int[] values  = new int[1];
+        values[0] = mOutputTexture;
+        GLES20.glDeleteTextures(1, values, 0);
+        values[0] = mFBO;
+        GLES20.glDeleteFramebuffers(1, values, 0);
+        mEGLCore.release();
     }
 }
