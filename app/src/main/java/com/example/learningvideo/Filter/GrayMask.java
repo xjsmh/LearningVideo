@@ -103,7 +103,7 @@ public class GrayMask extends FilterBase {
         mEGLCore.makeCurrent();
         int[] size = mEGLCore.getSurfaceSize();
         GLES20.glViewport(0, 0, size[0], size[1]);
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+        //GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         GLES20.glUseProgram(mFBOProgram);
         GLES20.glVertexAttribPointer(mPosLoc, 2, GLES20.GL_FLOAT, false, 16, sVertices.position(0));
         GLES20.glEnableVertexAttribArray(mPosLoc);

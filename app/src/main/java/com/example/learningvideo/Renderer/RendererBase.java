@@ -16,8 +16,6 @@ public abstract class RendererBase implements IDrawable {
     public abstract void setup(int width, int height);
     public abstract EGLCore getEGLCore();
     public abstract boolean isFrameAvailable();
-    public void setFrameTextureType(int texture) { }
-    public abstract int getFrameTextureType();
 
     public abstract boolean readyToDraw();
 

@@ -27,10 +27,10 @@ public class Encoder {
     private MediaCodec mEncoder;
     private MediaMuxer mMuxer;
     private Surface mInputSurface;
-    private EGLSurface mEGLSurface;
+
     private int mWidth = 640;
     private int mHeight = 360;
-    private int mFrameRate = 30;
+    private int mFrameRate = 240;
     private int mBitrate = 36000000;
     private int mIFrameInterval = 1;
     private String mPath = "sdcard/Download/out1.mp4";
@@ -98,7 +98,7 @@ public class Encoder {
         mEGLCore.presentationTime((mFrameCount++) * 1000000000L / mFrameRate);
         mEGLCore.swapBuffer();
 
-        //GLES20.glFinish();
+        GLES20.glFinish();
         Log.e(TAG, "encode " + mEncodeFrame++);
 
         boolean gotOutput = false;

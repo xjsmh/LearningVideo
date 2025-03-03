@@ -1,6 +1,8 @@
 package com.example.learningvideo.Renderer;
 
 import static com.example.learningvideo.Core.MSG_NEXT_ACTION;
+import static com.example.learningvideo.Core.MSG_RENDER;
+import static com.example.learningvideo.Core.MSG_START;
 import static com.example.learningvideo.Core.MSG_SURFACE_CREATED;
 
 import android.app.Activity;
@@ -81,7 +83,7 @@ public class Renderer3 extends RendererBase {
 
     @Override
     public int getViewId() {
-        return R.id.myTextureView;
+        return R.id.surfaceView;
     }
 
     public Renderer3(Handler handler) {
@@ -92,7 +94,7 @@ public class Renderer3 extends RendererBase {
     @Override
     public void init(Context context) {
         if (context != null) {
-            SurfaceView sv = ((Activity) context).findViewById(R.id.myTextureView);
+            SurfaceView sv = ((Activity) context).findViewById(R.id.surfaceView);
             sv.getHolder().addCallback(new MyCallback());
             mRenderSurface = sv.getHolder().getSurface();
         }
@@ -129,6 +131,7 @@ public class Renderer3 extends RendererBase {
             mEGLCore.destroySurface();
             mEGLCore.setWindowSurface(mRenderSurface);
             mReadyToDraw = true;
+            mHandler.sendEmptyMessage(MSG_START);
             return;
         }
         mEGLCore = new EGLCore(EGL14.EGL_NO_CONTEXT);
@@ -139,7 +142,10 @@ public class Renderer3 extends RendererBase {
 
         mFrameTexture = Utils.genTexture(mFrameTextureType, null, width, height, GLES20.GL_RGBA);
         mFrameSurfaceTexture = new SurfaceTexture(mFrameTexture);
-        mFrameSurfaceTexture.setOnFrameAvailableListener((SurfaceTexture surfaceTexture) -> {mIsFrameAvailable = true;});
+        mFrameSurfaceTexture.setOnFrameAvailableListener((SurfaceTexture surfaceTexture) -> {
+            mIsFrameAvailable = true;
+            mHandler.sendEmptyMessage(MSG_RENDER);
+        });
 
         FilterBase doNothing = new DoNothingButUploadImage(mEGLCore, mFrameTextureType, width, height);
         doNothing.addInputTexture(mFrameTexture, GLES20.GL_RGBA,
@@ -192,6 +198,7 @@ public class Renderer3 extends RendererBase {
         mTexSamplerLoc = GLES20.glGetUniformLocation(mProgram, "texSampler");
         mDecoderSurface = new Surface(mFrameSurfaceTexture);
         mReadyToDraw = true;
+        mHandler.sendEmptyMessage(MSG_START);
     }
 
     @Override
@@ -206,11 +213,6 @@ public class Renderer3 extends RendererBase {
 
     public boolean isFrameAvailable() {
         return mIsFrameAvailable;
-    }
-
-    @Override
-    public int getFrameTextureType() {
-        return mFrameTextureType;
     }
 
     @Override

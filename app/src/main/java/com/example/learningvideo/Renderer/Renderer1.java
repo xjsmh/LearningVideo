@@ -2,6 +2,8 @@ package com.example.learningvideo.Renderer;
 
 import static com.example.learningvideo.Core.MSG_NEXT_ACTION;
 import static com.example.learningvideo.Core.MSG_DONE;
+import static com.example.learningvideo.Core.MSG_RENDER;
+import static com.example.learningvideo.Core.MSG_START;
 import static com.example.learningvideo.Core.MSG_SURFACE_CREATED;
 
 import android.app.Activity;
@@ -87,7 +89,7 @@ public class Renderer1 extends RendererBase implements TextureView.SurfaceTextur
     @Override
     public void init(Context context) {
         if (context != null)
-            ((TextureView)((Activity)context).findViewById(R.id.myTextureView)).setSurfaceTextureListener(this);
+            ((TextureView)((Activity)context).findViewById(R.id.textureView)).setSurfaceTextureListener(this);
     }
 
     @Override
@@ -124,7 +126,7 @@ public class Renderer1 extends RendererBase implements TextureView.SurfaceTextur
 
     @Override
     public int getViewId() {
-        return R.id.myTextureView;
+        return R.id.textureView;
     }
 
     @Override
@@ -136,6 +138,7 @@ public class Renderer1 extends RendererBase implements TextureView.SurfaceTextur
             mEGLCore.destroySurface();
             mEGLCore.setWindowSurface(mRenderSurfaceTexture);
             mReadyToDraw = true;
+            mHandler.sendEmptyMessage(MSG_START);
             return;
         }
 
@@ -147,7 +150,10 @@ public class Renderer1 extends RendererBase implements TextureView.SurfaceTextur
 
         mFrameTexture = Utils.genTexture(mFrameTextureType, null, width, height, GLES20.GL_RGBA);
         mFrameSurfaceTexture = new SurfaceTexture(mFrameTexture);
-        mFrameSurfaceTexture.setOnFrameAvailableListener( (SurfaceTexture st) -> { mIsFrameAvailable = true; } );
+        mFrameSurfaceTexture.setOnFrameAvailableListener( (SurfaceTexture st) -> {
+            mIsFrameAvailable = true;
+            mHandler.sendEmptyMessage(MSG_RENDER);
+        });
 
         FilterBase doNothing = new DoNothingButUploadImage(mEGLCore, mFrameTextureType, width, height);
         doNothing.addInputTexture(mFrameTexture, GLES20.GL_RGBA,
@@ -199,16 +205,12 @@ public class Renderer1 extends RendererBase implements TextureView.SurfaceTextur
 
         mDecoderSurface = new Surface(mFrameSurfaceTexture);
         mReadyToDraw = true;
+        mHandler.sendEmptyMessage(MSG_START);
     }
 
     @Override
     public boolean isFrameAvailable() {
         return mIsFrameAvailable;
-    }
-
-    @Override
-    public int getFrameTextureType() {
-        return mFrameTextureType;
     }
 
     @Override

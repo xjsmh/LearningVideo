@@ -37,7 +37,6 @@ public class DoNothingButUploadImage extends FilterBase {
         mEGLCore.makeCurrent();
         int[] size = mEGLCore.getSurfaceSize();
         GLES20.glViewport(0, 0, size[0], size[1]);
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         mUploaders.get(0).uploadTexture(mInputTexture.get(0), 0, 0);
     }
 

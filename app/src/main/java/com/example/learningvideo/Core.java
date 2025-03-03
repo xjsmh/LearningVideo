@@ -33,19 +33,19 @@ import java.lang.ref.WeakReference;
 
 public class Core {
     private final static String TAG = "Core";
-    public static final int MSG_INIT = 2;
-    public static final int MSG_SURFACE_CREATED = 4;
-    public static final int MSG_DECODE = 5;
-    public static final int MSG_RENDER = 6;
-    public static final int MSG_ENCODE = 7;
-    public static final int MSG_NEXT_ACTION = 8;
-    public static final int MSG_DONE = 9;
-    public static final int MSG_START = 10;
+    public static final int MSG_INIT = 1;
+    public static final int MSG_SURFACE_CREATED = 2;
+    public static final int MSG_START = 3;
+    public static final int MSG_DECODE = 4;
+    public static final int MSG_RENDER = 5;
+    public static final int MSG_ENCODE = 6;
+    public static final int MSG_NEXT_ACTION = 7;
+    public static final int MSG_DONE = 8;
     WeakReference<Context> mContextRef;
     private AssetFileDescriptor mAfd;
-    static DecoderBase mDecoder;
-    static Encoder mEncoder;
-    RendererBase mRenderer;
+    private DecoderBase mDecoder;
+    private Encoder mEncoder;
+    private RendererBase mRenderer;
     HandlerThread mWorkThread;
     Handler mWorkHandler;
     int[] mActionFlow = {MSG_DECODE, MSG_RENDER, MSG_ENCODE};
@@ -53,9 +53,12 @@ public class Core {
     private volatile boolean mLooperRunning;
     Message mSavedMsg = new Message();
     private static final Core sInstance = new Core();
-    private boolean isInited = false;
 
-    private Core(){}
+    private Core(){
+        mWorkThread = new HandlerThread("work-thread");
+        mWorkThread.start();
+        mWorkHandler = new WorkHandler(mWorkThread.getLooper());
+    }
 
     public static Core getInstance() {
         return sInstance;
@@ -80,54 +83,42 @@ public class Core {
 
         @Override
         public void handleMessage(@NonNull Message msg) {
-            //Log.d(TAG, "receive message: " + msg.what);
+            Log.d(TAG, "receive message: " + msg.what);
             switch(msg.what) {
                 case MSG_INIT:
-                    if (mRenderer == null)
-                        mRenderer = new Renderer2(mWorkHandler);
+                    if (mRenderer == null) {
+                        if (Renderer1.class.equals(msg.obj)) mRenderer = new Renderer1(mWorkHandler);
+                        else if (Renderer2.class.equals(msg.obj)) mRenderer = new Renderer2(mWorkHandler);
+                        else if (Renderer3.class.equals(msg.obj)) mRenderer = new Renderer3(mWorkHandler);
+                        else if (Renderer4.class.equals(msg.obj)) mRenderer = new Renderer4(mWorkHandler);
+                        else mRenderer = new Renderer5(mWorkHandler);
+                    }
                     mRenderer.init(mContextRef.get());
-                    // so ugly
                     if (mDecoder == null) {
-                        if (mRenderer instanceof Renderer5) {
-                            mRenderer.setFrameTextureType(GLES20.GL_TEXTURE_2D);
-                            int frameTextureType = mRenderer.getFrameTextureType();
-                            if (frameTextureType == GLES20.GL_TEXTURE_2D) {
-                                mDecoder = new Decoder2Client(mAfd, mWorkHandler);
-                            } else if (frameTextureType == GLES11Ext.GL_TEXTURE_EXTERNAL_OES) {
-                                mDecoder = new Decoder3Client(mAfd, mWorkHandler);
-                            } else {
-                                throw new RuntimeException();
-                            }
-                        } else {
-                            mDecoder = new Decoder1(mAfd, mWorkHandler);
-                        }
+                        mDecoder = mRenderer instanceof Renderer5 ?
+                                Renderer5.createDecoder(mAfd, mWorkHandler) : new Decoder1(mAfd, mWorkHandler);
                     }
                     if (mEncoder == null) {
                         mEncoder = new Encoder(mWorkHandler);
                     }
                     break;
                 case MSG_SURFACE_CREATED:
-                    mLooperRunning = true;
                     onSetViewSize(mDecoder.getWidth(), mDecoder.getHeight());
                     mRenderer.setup(mDecoder.getWidth(), mDecoder.getHeight());
                     break;
                 case MSG_START:
-                    if (!mRenderer.readyToDraw()) {
-                        Message.obtain(mWorkHandler, MSG_START).sendToTarget();
-                        break;
+                    if (mLooperRunning && mRenderer.readyToDraw()) {
+                        mDecoder.start(mRenderer.getInputSurface());
+                        mEncoder.start(mRenderer.getEGLCore(), mRenderer);
+                        Message.obtain(this, MSG_NEXT_ACTION, mSavedMsg.arg1, mSavedMsg.arg2, mSavedMsg.obj).sendToTarget();
                     }
-                    mDecoder.start(mRenderer.getInputSurface());
-                    mEncoder.start(mRenderer.getEGLCore(), mRenderer);
-                    Message.obtain(this, MSG_NEXT_ACTION, mSavedMsg.arg1, mSavedMsg.arg2, mSavedMsg.obj).sendToTarget();
                     break;
                 case MSG_DECODE:
                     mDecoder.decode();
                     break;
                 case MSG_RENDER:
                     if (!mLooperRunning) return;
-                    if (!mRenderer.isFrameAvailable()) {
-                        Message.obtain(this, MSG_RENDER, msg.arg1, msg.arg2, msg.obj).sendToTarget();
-                    } else {
+                    if (mRenderer.isFrameAvailable() && mActionFlow[mCurrentAction] == MSG_RENDER) {
                         mRenderer.render(msg);
                     }
                     break;
@@ -135,6 +126,7 @@ public class Core {
                     mEncoder.encode();
                     break;
                 case MSG_NEXT_ACTION:
+                    if (mRenderer == null || mDecoder == null || mEncoder == null) return;
                     if (mLooperRunning) {
                         Message.obtain(this, getNextAction(), msg.arg1, msg.arg2, msg.obj).sendToTarget();
                         break;
@@ -146,10 +138,14 @@ public class Core {
                     }
                     break;
                 case MSG_DONE:
+                    mLooperRunning = false;
+                    if (mRenderer == null || mDecoder == null || mEncoder == null) return;
                     mRenderer.release();
                     mDecoder.release();
                     mEncoder.release();
-                    mLooperRunning = false;
+                    mRenderer = null;
+                    mDecoder = null;
+                    mEncoder = null;
                     break;
 
             }
@@ -173,16 +169,10 @@ public class Core {
     }
 
 
-    public void init(AssetFileDescriptor afd, Context context) {
-        if (!isInited) {
-            mWorkThread = new HandlerThread("work-thread");
-            mWorkThread.start();
-            mWorkHandler = new WorkHandler(mWorkThread.getLooper());
-            mAfd = afd;
-            isInited = true;
-        }
+    public void init(AssetFileDescriptor afd, Context context, Class clz) {
+        mAfd = afd;
         mContextRef = new WeakReference<>(context);
-        Message.obtain(mWorkHandler, MSG_INIT).sendToTarget();
+        Message.obtain(mWorkHandler, MSG_INIT, clz).sendToTarget();
     }
 
     public void start() {

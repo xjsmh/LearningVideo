@@ -1,6 +1,8 @@
 package com.example.learningvideo.Renderer;
 
 import static com.example.learningvideo.Core.MSG_NEXT_ACTION;
+import static com.example.learningvideo.Core.MSG_RENDER;
+import static com.example.learningvideo.Core.MSG_START;
 import static com.example.learningvideo.Core.MSG_SURFACE_CREATED;
 
 import android.app.Activity;
@@ -56,8 +58,6 @@ public class Renderer2 extends RendererBase {
     private int mRenderFrame = 0;
     int mWidth = -1;
     int mHeight = -1;
-    private boolean mSizeChanged = false;
-    private Context mContext;
     private volatile EGLCore mEGLCore;
     private final List<FilterBase> mFilterList = new ArrayList<>();
 
@@ -94,11 +94,6 @@ public class Renderer2 extends RendererBase {
         return mIsFrameAvailable;
     }
 
-    @Override
-    public int getFrameTextureType() {
-        return mFrameTextureType;
-    }
-
     private volatile boolean mIsFrameAvailable = false;
 
     @Override
@@ -119,13 +114,13 @@ public class Renderer2 extends RendererBase {
 
     @Override
     public int getViewId() {
-        return R.id.myTextureView;
+        return R.id.glSurfaceView;
     }
 
     @Override
     public void init(Context context) {
         if (context != null) {
-            mSurfaceView = ((Activity) context).findViewById(R.id.myTextureView);
+            mSurfaceView = ((Activity) context).findViewById(R.id.glSurfaceView);
             MyCallback cb = new MyCallback();
             mSurfaceView.getHolder().addCallback(cb);
             mSurfaceView.setEGLConfigChooser(new GLSurfaceView.EGLConfigChooser() {
@@ -197,6 +192,7 @@ public class Renderer2 extends RendererBase {
                 mFrameSurfaceTexture = new SurfaceTexture(mFrameTexture);
                 mFrameSurfaceTexture.setOnFrameAvailableListener((SurfaceTexture surfaceTexture) -> {
                     mIsFrameAvailable = true;
+                    mHandler.sendEmptyMessage(MSG_RENDER);
                 }, mHandler);
 
                 String vertexShader =
@@ -257,7 +253,6 @@ public class Renderer2 extends RendererBase {
 
     @Override
     public void draw() {
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         GLES20.glUseProgram(mProgram);
         GLES20.glVertexAttribPointer(mPosLoc, 2, GLES20.GL_FLOAT, false, 16, sVertices.position(0));
         GLES20.glEnableVertexAttribArray(mPosLoc);
@@ -302,26 +297,33 @@ public class Renderer2 extends RendererBase {
             if (mEGLCore != null) {
                 mEGLCore.updateSurface(EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW));
                 mReadyToDraw = true;
+                mHandler.sendEmptyMessage(MSG_START);
             }
         }
 
         @Override
         public void onDrawFrame(GL10 gl) {
-            if (!mIsFrameAvailable || !mReadyToDraw) return;
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+            if (!mReadyToDraw) {
+                return;
+            }
+            if (!mIsFrameAvailable) {
+                Log.e(TAG, "why here ?");
+                mEGLCore.makeCurrent();
+                draw();
+                return;
+            }
 
             for (FilterBase fp : mFilterList) {
                 fp.process();
             }
             mEGLCore.makeCurrent();
-            //mEGLCore.updateSurface(EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW));
-
             int[] size = mEGLCore.getSurfaceSize();
             GLES20.glViewport(0, 0, size[0], size[1]);
             Renderer2.this.draw();
             Log.e(TAG, "render "+ mRenderFrame++);
             mIsFrameAvailable = false;
             mSurfaceView.queueEvent(() -> {
-                GLES20.glFinish();
                 mHandler.sendEmptyMessage(MSG_NEXT_ACTION);
             });
         }

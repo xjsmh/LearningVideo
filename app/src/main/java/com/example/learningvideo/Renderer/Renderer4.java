@@ -1,6 +1,7 @@
 package com.example.learningvideo.Renderer;
 
 import static com.example.learningvideo.Core.MSG_NEXT_ACTION;
+import static com.example.learningvideo.Core.MSG_START;
 import static com.example.learningvideo.Core.MSG_SURFACE_CREATED;
 
 import android.app.Activity;
@@ -81,13 +82,13 @@ public class Renderer4 extends RendererBase {
 
     @Override
     public int getViewId() {
-        return R.id.myTextureView;
+        return R.id.surfaceView;
     }
 
     @Override
     public void init(Context context) {
         if (context != null) {
-            SurfaceView sv = ((Activity) context).findViewById(R.id.myTextureView);
+            SurfaceView sv = ((Activity) context).findViewById(R.id.surfaceView);
             sv.getHolder().addCallback(new MyCallback());
             mRenderSurface = sv.getHolder().getSurface();
         }
@@ -125,6 +126,7 @@ public class Renderer4 extends RendererBase {
             mEGLCore.destroySurface();
             mEGLCore.setWindowSurface(mRenderSurface);
             mReadyToDraw = true;
+            mHandler.sendEmptyMessage(MSG_START);
             return;
         }
         mWidth = width;
@@ -169,6 +171,7 @@ public class Renderer4 extends RendererBase {
         mTexPosLoc = GLES20.glGetAttribLocation(mProgram, "texPos");
         mTexSamplerLoc = GLES20.glGetUniformLocation(mProgram, "texSampler");
         mReadyToDraw = true;
+        mHandler.sendEmptyMessage(MSG_START);
     }
 
     @Override
@@ -218,11 +221,6 @@ public class Renderer4 extends RendererBase {
     @Override
     public boolean isFrameAvailable() {
         return true;
-    }
-
-    @Override
-    public int getFrameTextureType() {
-        return mFrameTextureType;
     }
 
     @Override

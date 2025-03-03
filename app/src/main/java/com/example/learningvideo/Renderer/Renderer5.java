@@ -1,27 +1,27 @@
 package com.example.learningvideo.Renderer;
 
 import static com.example.learningvideo.Core.MSG_NEXT_ACTION;
+import static com.example.learningvideo.Core.MSG_START;
 import static com.example.learningvideo.Core.MSG_SURFACE_CREATED;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.AssetFileDescriptor;
 import android.opengl.EGL14;
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.os.Handler;
 import android.os.Message;
-import android.util.DisplayMetrics;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import android.view.View;
-import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 
+import com.example.learningvideo.Decoder.Decoder2Client;
+import com.example.learningvideo.Decoder.Decoder3Client;
+import com.example.learningvideo.Decoder.DecoderBase;
 import com.example.learningvideo.Filter.FilterBase;
 import com.example.learningvideo.Filter.FrameCapture;
 import com.example.learningvideo.Filter.GrayMask;
@@ -52,17 +52,17 @@ public class Renderer5 extends RendererBase {
     private int mFrameTexture;
     int mRenderTexType;
     //private int mFrameTextureType = GLES20.GL_TEXTURE_2D;
-    private int mFrameTextureType = GLES11Ext.GL_TEXTURE_EXTERNAL_OES;
+    private static int sFrameTextureType = GLES11Ext.GL_TEXTURE_EXTERNAL_OES;
     private final List<FilterBase> mFilterList = new ArrayList<>();
     private boolean mReadyToDraw;
     private Surface mRenderSurface;
 
-    public int getFrameTextureType() {
-        return mFrameTextureType;
+    public static int getFrameTextureType() {
+        return sFrameTextureType;
     }
 
-    public void setFrameTextureType(int frameTextureType) {
-        mFrameTextureType = frameTextureType;
+    public static void setFrameTextureType(int frameTextureType) {
+        sFrameTextureType = frameTextureType;
     }
 
     static {
@@ -85,6 +85,10 @@ public class Renderer5 extends RendererBase {
     public Renderer5(Handler handler) {
         super(handler);
         mHandler = handler;
+    }
+
+    public static DecoderBase createDecoder(AssetFileDescriptor afd, Handler workHandler) {
+        return sFrameTextureType == GLES20.GL_TEXTURE_2D ? new Decoder2Client(afd, workHandler) : new Decoder3Client(afd, workHandler);
     }
 
     @Override
@@ -117,20 +121,21 @@ public class Renderer5 extends RendererBase {
             mEGLCore.destroySurface();
             mEGLCore.setWindowSurface(mRenderSurface);
             mReadyToDraw = true;
+            mHandler.sendEmptyMessage(MSG_START);
             return;
         }
         mEGLCore = new EGLCore(EGL14.EGL_NO_CONTEXT);
         mEGLCore.setWindowSurface(mRenderSurface);
         mEGLCore.makeCurrent();
 
-        mFrameTexture = Utils.genTexture(mFrameTextureType, null, width, height, GLES20.GL_RGBA);
+        mFrameTexture = Utils.genTexture(sFrameTextureType, null, width, height, GLES20.GL_RGBA);
 
-        FilterBase grayMask = new GrayMask(mEGLCore, mFrameTextureType, width, height);
+        FilterBase grayMask = new GrayMask(mEGLCore, sFrameTextureType, width, height);
         grayMask.addInputTexture(mFrameTexture, GLES20.GL_RGBA,
                 (int texture, int slot, int samplerLoc) -> {
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + slot);
                     //mSurfaceTexture.updateTexImage();
-                    GLES20.glBindTexture(mFrameTextureType, texture);
+                    GLES20.glBindTexture(sFrameTextureType, texture);
                     GLES20.glUniform1i(samplerLoc, slot);
                 });
         mFilterList.add(grayMask);
@@ -144,7 +149,7 @@ public class Renderer5 extends RendererBase {
             mRenderTexType = mFilterList.get(mFilterList.size() - 1).getOutTextureType();
         } else {
             mRenderTex = mFrameTexture;
-            mRenderTexType = mFrameTextureType;
+            mRenderTexType = sFrameTextureType;
         }
 
         String vertexShader =
@@ -171,6 +176,7 @@ public class Renderer5 extends RendererBase {
         mTexPosLoc = GLES20.glGetAttribLocation(mProgram, "texPos");
         mTexSamplerLoc = GLES20.glGetUniformLocation(mProgram, "texSampler");
         mReadyToDraw = true;
+        mHandler.sendEmptyMessage(MSG_START);
     }
 
     @Override
@@ -211,13 +217,13 @@ public class Renderer5 extends RendererBase {
 
     @Override
     public int getViewId() {
-        return R.id.myTextureView;
+        return R.id.surfaceView;
     }
 
     @Override
     public void init(Context context) {
         if (context != null) {
-            SurfaceView sv = ((Activity) context).findViewById(R.id.myTextureView);
+            SurfaceView sv = ((Activity) context).findViewById(R.id.surfaceView);
             sv.getHolder().addCallback(new MyCallback());
             mRenderSurface = sv.getHolder().getSurface();
         }

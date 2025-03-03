@@ -12,11 +12,24 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LearningVideo"
         tools:targetApi="31">
+        <activity
+            android:name=".RenderActivity$SurfaceViewActivity"
+            android:exported="false" />
+        <activity
+            android:name=".RenderActivity$GLSurfaceViewActivity"
+            android:exported="false" />
+        <activity
+            android:name=".RenderActivity$TextureViewActivity"
+            android:exported="false" />
+        <activity
+            android:name=".RenderActivity"
+            android:exported="false" />
+
         <service
             android:name=".Decoder.DecoderService"
             android:enabled="true"
             android:exported="false"
-            android:process=":decode_service"></service>
+            android:process=":decode_service" />
 
         <activity
             android:name=".MainActivity"
